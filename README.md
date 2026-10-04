@@ -12,7 +12,7 @@
 dsh plugin --profile web add github:WwW7olFWwW/dsh-cbm-keeper
 ```
 
-裝完不用重啟，卡片在 設定 →「CBM 圖譜」。建議同時關掉上游那個無條件的全量重建（每次 session 白燒約 61 秒／658 MB）：
+裝完不用重啟，卡片在 設定 →「CBM 圖譜」（沒有就重整一次頁面；**但改動 `lib/` 之後要重啟 `dsh web` 才換代**）。建議同時關掉上游那個無條件的全量重建（每次 session 白燒約 61 秒／658 MB）：
 
 ```sh
 codebase-memory-mcp config set auto_index false

@@ -12,7 +12,7 @@ Hooking [Codebase Memory](https://github.com/DeusData/codebase-memory-mcp) (CBM)
 dsh plugin --profile web add github:WwW7olFWwW/dsh-cbm-keeper
 ```
 
-No restart needed; the card appears under Settings → "CBM 圖譜" [CBM Graph]. While you are there, turn off the upstream unconditional full rebuild (~61 s / 658 MB burnt on every session start):
+No restart needed; the card appears under Settings → "CBM 圖譜" [CBM Graph] (reload the page once if it does not — **editing `lib/` is the exception and needs a `dsh web` restart**). While you are there, turn off the upstream unconditional full rebuild (~61 s / 658 MB burnt on every session start):
 
 ```sh
 codebase-memory-mcp config set auto_index false
