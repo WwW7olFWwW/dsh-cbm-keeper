@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }}, chokidar ${{ matrix.chokidar }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+        chokidar: [with, without]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # chokidar 是 optionalDependency。兩種情況都要綠：
+      # 有它 → 走 chokidar 監看；沒有它 → 退回 node:fs.watch（README 的「已知限制」）。
+      - name: Install optional dependency (chokidar)
+        if: matrix.chokidar == 'with'
+        run: npm install --no-save --no-package-lock chokidar@^4
+
+      - name: Unit tests
+        run: node --test "test/*.test.js"
+
+  syntax:
+    name: syntax + manifest check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Parse every module
+        run: |
+          for f in lib/*.js test/*.js test/helpers/*.js tools/*.mjs; do
+            node --check "$f"
+          done
+      - name: package.json is valid and installable as a bundle
+        run: |
+          node -e "const p=require('./package.json'); if(p.private) throw new Error('package.json 仍是 private'); if(!p.dsh?.bundle?.patch) throw new Error('缺少 dsh.bundle.patch'); if(p.license!=='MIT') throw new Error('授權不是 MIT');"

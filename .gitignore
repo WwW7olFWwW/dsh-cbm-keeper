@@ -1,0 +1,21 @@
+# 相依
+node_modules/
+.pnpm-store/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# 執行期狀態（預設落在 ~/.dsh/cbm-keeper；若改到專案內請勿提交）
+.dsh/
+cbm-keeper/
+
+# 日誌與打包產物
+*.log
+*.tgz
+*.tmp
+
+# 編輯器與作業系統
+.DS_Store
+.idea/
+.vscode/
+*.swp
