@@ -189,13 +189,14 @@ pnpm 對 `link:` 套件的一個已知行為——它會把 `node_modules` 裡�
 ## 開發
 
 ```bash
-node --test "test/*.test.js"           # 單元測試（不需要真的索引）
+node --test test/*.test.js            # 單元測試（不需要真的索引）
 node tools/verify-keeper.mjs           # 對真實 CBM CLI 掃描（唯讀，需要 CLI 在 PATH）
 node tools/verify-client.mjs           # 客戶端渲染驗證（需要 dsh web 在跑）
 ```
 
-`node --test test/` 在這個目錄會解析失敗（Node 把 `test/` 當成模組而非測試目錄），
-請照上面給 glob。
+`node --test test/` 在這個目錄會解析失敗（Node 把 `test/` 當成模組而非測試目錄），請照上面給 glob；
+**glob 不要加引號**——Node 20 的 `--test` 不會自己展開 glob，`"test/*.test.js"` 會被當成一個字面路徑
+（CI 上會看到 `Could not find '.../test/*.test.js'`）。
 
 `lib/` 是純 ESM JavaScript，沒有建置步驟；profile 以 `link:` 指向本目錄。
 
@@ -215,7 +216,7 @@ systemctl --user restart dsh-web
 
 | 項目 | 證據 |
 |---|---|
-| 單元測試（NFR-7） | `node --test "test/*.test.js"` → **106 tests / 106 pass / 0 fail / 0 todo** |
+| 單元測試（NFR-7） | `node --test test/*.test.js` → **106 tests / 106 pass / 0 fail / 0 todo**（Node 20／22／24 皆同） |
 | Host 半邊對真實 CLI | `node tools/verify-keeper.mjs` → **19/19**（唯讀掃描 + 孤兒收斂 + 未納管不得重建） |
 | 客戶端渲染 | `node tools/verify-client.mjs` → **29/29**（用執行中伺服器的真實回應逐值比對；條數是資料條件式，專案沒有 head 時會少一至兩條） |
 | CLI 解析（FR-5） | `cliPath=~/.local/bin/codebase-memory-mcp`, `source=PATH`, `cliVersion=0.11.0`, `supported=true` |

@@ -191,7 +191,7 @@ touch the profile's `cordis.patch.yml` (the bundle is layered on as a patch laye
 ## Development
 
 ```bash
-node --test "test/*.test.js"           # unit tests (no real index needed)
+node --test test/*.test.js             # unit tests (no real index needed)
 node tools/verify-keeper.mjs           # scan against the real CBM CLI (read-only, requires the CLI on PATH)
 node tools/verify-client.mjs           # client rendering verification (requires dsh web to be running)
 ```
@@ -217,7 +217,7 @@ via client-modules every time and produces a new bundle rev, so a page reload is
 
 | Item | Evidence |
 |---|---|
-| Unit tests (NFR-7) | `node --test "test/*.test.js"` → **106 tests / 106 pass / 0 fail / 0 todo** |
+| Unit tests (NFR-7) | `node --test test/*.test.js` → **106 tests / 106 pass / 0 fail / 0 todo** (identical on Node 20 / 22 / 24) |
 | Host half against the real CLI | `node tools/verify-keeper.mjs` → **19/19** (read-only scan + orphan convergence + untracked projects must not be rebuilt) |
 | Client rendering | `node tools/verify-client.mjs` → **29/29** (compared value by value against the running server's real responses; the count is data-conditional and drops by one or two when a project has no head) |
 | CLI resolution (FR-5) | `cliPath=~/.local/bin/codebase-memory-mcp`, `source=PATH`, `cliVersion=0.11.0`, `supported=true` |

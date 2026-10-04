@@ -37,7 +37,7 @@
     "docs"
   ],
   "scripts": {
-    "test": "node --test \"test/*.test.js\"",
+    "test": "node --test test/*.test.js",
     "test:syntax": "for f in lib/*.js test/*.js test/helpers/*.js tools/*.mjs; do node --check \"$f\" || exit 1; done",
     "verify:keeper": "node tools/verify-keeper.mjs",
     "verify:client": "node tools/verify-client.mjs"

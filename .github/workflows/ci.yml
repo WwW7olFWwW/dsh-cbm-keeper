@@ -31,8 +31,9 @@ jobs:
         if: matrix.chokidar == 'with'
         run: npm install --no-save --no-package-lock chokidar@^4
 
+      # glob 不加引號：Node 20 的 --test 不會自己展開 glob，加引號會被當成字面路徑。
       - name: Unit tests
-        run: node --test "test/*.test.js"
+        run: node --test test/*.test.js
 
   syntax:
     name: syntax + manifest check

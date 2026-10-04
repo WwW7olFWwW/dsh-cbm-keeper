@@ -11,8 +11,11 @@
 ## 跑測試
 
 ```bash
-node --test "test/*.test.js"
+node --test test/*.test.js
 ```
+
+**glob 不要加引號**：Node 20 的 `--test` 不會自己展開 glob，`"test/*.test.js"` 會被當成一個字面路徑
+（CI 上會看到 `Could not find '.../test/*.test.js'`）。交給 shell 展開，20／22／24 都成立。
 
 **不要寫成 `node --test test/`**：Node 會把 `test/` 當成模組而非測試目錄，直接解析失敗。
 
