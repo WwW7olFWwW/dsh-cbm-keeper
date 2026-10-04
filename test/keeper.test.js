@@ -129,7 +129,11 @@ async function makeKeeper(t, options) {
     // home/ 重新建回來。因此這裡等到「佇列與在飛的工作都空了」才刪，刪完再確認。
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const idle = keeper.queue.length === 0 && keeper.running === undefined && inFlight.size === 0;
-      await rm(dir, { recursive: true, force: true });
+      // 這裡刻意吞掉 rm 的錯誤：晚到的寫入可能正好在 rm 走訪目錄時建立檔案，
+      // 讓它得到 ENOTEMPTY。那是競態，不是受測行為出錯——下一輪會再刪一次。
+      // （CI 上真的遇過：node 20 + chokidar 那格因為這個 ENOTEMPTY 紅了一次。）
+      await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+        .catch(function () { return undefined; });
       if (idle && (await readdir(dir).catch(function () { return []; })).length === 0) return;
       await new Promise(function (resolve) { setTimeout(resolve, 100); });
     }
