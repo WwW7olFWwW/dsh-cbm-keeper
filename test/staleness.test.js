@@ -8,6 +8,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MAX_BEHIND_BY } from '../lib/constants.js';
 import {
+  buildGraphBase,
+  buildGraphUrl,
   canonicalRootPath,
   decideStaleness,
   isExcludedPath,
@@ -289,4 +291,47 @@ test('isExcludedPath：逐段精確比對目錄名', function () {
   assert.equal(isExcludedPath('', excludes), false);
   // 空排除集不排除任何東西。
   assert.equal(isExcludedPath('node_modules/x.js', []), false);
+});
+
+test('buildGraphBase：由 ui_port 推導、ui_enabled=false 停用、非法埠不給連結', function () {
+  // 正常情形：設定頁的覆寫留空，埠由 CBM 的 ui_port 推導，來源永遠是 loopback。
+  const derived = buildGraphBase({ override: '', uiEnabled: 'true', uiPort: '9749' });
+  assert.deepEqual(derived, { state: 'ok', base: 'http://127.0.0.1:9749', port: 9749, source: 'config' });
+  // 埠留空＝上游的預設值（9749），不是「沒有埠」。
+  assert.equal(buildGraphBase({ uiEnabled: 'true' }).port, 9749);
+  // 只有明確的 'false' 才算停用——undefined（上游沒回這一項）不該讓連結消失。
+  assert.equal(buildGraphBase({ uiEnabled: 'false', uiPort: '9749' }).state, 'disabled');
+  assert.equal(buildGraphBase({ uiEnabled: undefined, uiPort: '9749' }).state, 'ok');
+  // 非法埠一律不給 base：這個字串會被放進 href，寧可沒有連結。
+  assert.equal(buildGraphBase({ uiPort: '0' }).state, 'invalid');
+  assert.equal(buildGraphBase({ uiPort: '65536' }).state, 'invalid');
+  assert.equal(buildGraphBase({ uiPort: 'abc' }).state, 'invalid');
+  assert.equal(buildGraphBase({ uiPort: '80; rm -rf /' }).state, 'invalid');
+});
+
+test('buildGraphBase：覆寫只接受 http(s)，並去掉尾斜線但保留子路徑', function () {
+  const over = buildGraphBase({ override: ' https://cbm.example.com/graph/ ', uiEnabled: 'false', uiPort: '9749' });
+  assert.deepEqual(over, { state: 'ok', base: 'https://cbm.example.com/graph', port: undefined, source: 'override' });
+  // 覆寫優先於 ui_enabled=false：使用者明確指到別台機器時，我們不替他判斷那台的開關。
+  assert.equal(buildGraphBase({ override: 'http://10.0.0.5:9749', uiEnabled: 'false' }).state, 'ok');
+  // 非 http(s) 一律視為非法，不讓 file:// 之類的字串進到 href。
+  assert.equal(buildGraphBase({ override: 'file:///etc/passwd' }).state, 'invalid');
+  assert.equal(buildGraphBase({ override: 'javascript:alert(1)' }).state, 'invalid');
+  assert.equal(buildGraphBase({ override: 'not a url' }).state, 'invalid');
+});
+
+test('buildGraphUrl：帶上 tab 與 project，沒有 base 就沒有網址', function () {
+  const base = 'http://127.0.0.1:9749';
+  assert.equal(buildGraphUrl(base), 'http://127.0.0.1:9749/?tab=graph', '預設分頁是 graph');
+  assert.equal(buildGraphUrl(base, { tab: 'stats' }), 'http://127.0.0.1:9749/?tab=stats');
+  assert.equal(buildGraphUrl(base, { tab: 'nonsense' }), 'http://127.0.0.1:9749/?tab=graph', '清單外的分頁退回 graph');
+  assert.equal(buildGraphUrl(base, { project: 'sample-repo' }), 'http://127.0.0.1:9749/?tab=graph&project=sample-repo');
+  // 專案名一律走 URL 編碼，避免名字裡的 & 或 # 把查詢字串截斷。
+  assert.equal(
+    buildGraphUrl(base, { project: 'a&b#c d' }),
+    'http://127.0.0.1:9749/?tab=graph&project=a%26b%23c+d',
+  );
+  assert.equal(buildGraphUrl(base, { project: '   ' }), 'http://127.0.0.1:9749/?tab=graph', '空專案名不帶參數');
+  assert.equal(buildGraphUrl(undefined, { project: 'x' }), undefined);
+  assert.equal(buildGraphUrl('', {}), undefined);
 });

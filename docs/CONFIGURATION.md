@@ -22,6 +22,21 @@
 | `excludes` | `''` | 監看排除的目錄名，逗號分隔。留空＝內建清單。 |
 | `includeProjects` | `''` | 只納管這些專案名。留空＝全部。 |
 | `excludeProjects` | `''` | 排除這些專案名。 |
+| `graphUrl` | `''` | CBM 圖譜 UI 的來源網址（只收 `http(s)://`）。留空＝由 CBM 的 `ui_port` 推導成 `http://127.0.0.1:<port>`；遠端或反向代理情境在此覆寫。 |
+
+## 圖譜 UI 的連結
+
+CBM 自帶一個 HTTP 圖譜介面（`codebase-memory-mcp --ui=true`，預設埠 9749）。卡片會把它接進來，三態如實呈現：
+
+| 狀態 | 卡片顯示 | 連結 |
+|---|---|---|
+| CBM 的 `ui_enabled=false` | 「CBM 圖譜 UI 未啟用：執行 codebase-memory-mcp --ui=true」 | 不給 |
+| 啟用但 `GET /api/ui-config` 沒回應 | 「圖譜 UI 未回應」 | 給（但標明未回應） |
+| 啟用且可連 | 標題列的「開啟圖譜」與每個專案列的「圖譜」 | 給 |
+
+專案列的連結是深連結（`?project=<name>&tab=graph`），會直接開到該專案的圖。本插件**不會**替你改 CBM 的 `ui_enabled`——那個開關屬於上游設定。
+
+探測是每輪掃描一次、對 `127.0.0.1` 的一次 GET（1 秒逾時），不會隨 UI 重繪重打。
 
 ## REST 控制面
 

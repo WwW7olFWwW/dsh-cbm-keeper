@@ -92,6 +92,9 @@ async function makeKeeper(t, options) {
     readHeadCommittedAt: async function () { return facts.headCommittedAt; },
     countCommitsBetween: async function () { return facts.behindBy; },
     isWorktreeDirty: async function () { return facts.dirty; },
+    // 預設不連網：圖譜 UI 的探測是唯一的 HTTP 呼叫，單元測試不該真的打出去。
+    // 需要驗證連結的案例自己覆寫這一個（見 FR-16 那幾條）。
+    probeGraphUiHttp: async function () { return { ok: false, error: '測試注入：不對外連網' }; },
   }, options.deps ?? {});
 
   const keeper = new CbmKeeper({ home, config: function () { return config; }, log, state, deps });
@@ -424,4 +427,111 @@ test('NFR-6：stop() 會 join 正在跑的重建，回傳後不得再有任何�
   const abandoned = made.log.entries.filter(function (entry) { return entry.event === 'rebuild.abandoned'; });
   assert.equal(abandoned.length, 1, '中止的重建應留下一筆 rebuild.abandoned');
   assert.equal(abandoned[0].data.project, 'slow');
+});
+
+test('FR-16：圖譜 UI 啟用且探測成功時，狀態與每個專案都拿到連結', async function (t) {
+  const root = '/srv/graph-repo';
+  const probes = [];
+  const made = await makeKeeper(t, {
+    projects: [fakeProject({ name: 'graph-demo', rootPath: root, graphHead: '3449ba2' })],
+    sha: { [root]: '3449ba2' },
+    cbm: { config: { auto_index: 'false', auto_watch: 'false', ui_enabled: 'true', ui_port: '9749' } },
+    deps: {
+      probeGraphUiHttp: async function (url) {
+        probes.push(url);
+        return { ok: true };
+      },
+    },
+  });
+
+  await made.keeper.start();
+  const graphUi = made.keeper.status().graphUi;
+  assert.equal(graphUi.state, 'ok');
+  assert.equal(graphUi.source, 'config');
+  assert.equal(graphUi.port, 9749);
+  assert.equal(graphUi.reachable, true);
+  assert.equal(graphUi.error, undefined);
+  assert.equal(graphUi.url, 'http://127.0.0.1:9749/?tab=graph', '全域連結開在圖譜分頁');
+  assert.deepEqual(probes, ['http://127.0.0.1:9749/api/ui-config'], '每輪掃描恰好探測一次 /api/ui-config');
+
+  const row = made.keeper.list()[0];
+  assert.equal(row.graphUrl, 'http://127.0.0.1:9749/?tab=graph&project=graph-demo', '專案列要能直達自己的圖');
+});
+
+test('FR-16：CBM 的 ui_enabled=false 時只給提示，不給連結', async function (t) {
+  const root = '/srv/graph-off';
+  let probed = 0;
+  const made = await makeKeeper(t, {
+    projects: [fakeProject({ name: 'off', rootPath: root, graphHead: '3449ba2' })],
+    sha: { [root]: '3449ba2' },
+    cbm: { config: { auto_index: 'false', auto_watch: 'false', ui_enabled: 'false', ui_port: '9749' } },
+    deps: {
+      probeGraphUiHttp: async function () {
+        probed += 1;
+        return { ok: true };
+      },
+    },
+  });
+
+  await made.keeper.start();
+  const graphUi = made.keeper.status().graphUi;
+  assert.equal(graphUi.state, 'disabled');
+  assert.equal(graphUi.url, undefined, '沒開就不該有可以點的連結');
+  assert.equal(graphUi.base, undefined);
+  assert.equal(made.keeper.list()[0].graphUrl, undefined);
+  assert.equal(probed, 0, '停用時不該白白打一次 HTTP');
+});
+
+test('FR-16：UI 沒回應時仍保留網址，但標成 reachable=false', async function (t) {
+  const root = '/srv/graph-down';
+  const made = await makeKeeper(t, {
+    projects: [fakeProject({ name: 'down', rootPath: root, graphHead: '3449ba2' })],
+    sha: { [root]: '3449ba2' },
+    cbm: { config: { auto_index: 'false', auto_watch: 'false', ui_enabled: 'true', ui_port: '9749' } },
+    deps: {
+      probeGraphUiHttp: async function () {
+        return { ok: false, error: 'connect ECONNREFUSED 127.0.0.1:9749' };
+      },
+    },
+  });
+
+  await made.keeper.start();
+  const graphUi = made.keeper.status().graphUi;
+  assert.equal(graphUi.state, 'ok', '設定上它是開著的——這件事本身要如實回報');
+  assert.equal(graphUi.reachable, false);
+  assert.match(graphUi.error, /ECONNREFUSED/);
+  assert.equal(graphUi.url, 'http://127.0.0.1:9749/?tab=graph', '網址仍在，卡片才有東西可以顯示「未回應」');
+  // 狀態翻轉要留下痕跡，而不是每輪掃描都刷一筆正常訊息。
+  const flips = made.log.entries.filter(function (entry) { return entry.event === 'graphUi.changed'; });
+  assert.equal(flips.length, 1);
+  assert.equal(flips[0].data.reachable, false);
+});
+
+test('FR-16：graphUrl 覆寫優先，非 http(s) 的覆寫直接判定為非法', async function (t) {
+  const root = '/srv/graph-override';
+  const made = await makeKeeper(t, {
+    projects: [fakeProject({ name: 'over', rootPath: root, graphHead: '3449ba2' })],
+    sha: { [root]: '3449ba2' },
+    cbm: { config: { auto_index: 'false', auto_watch: 'false', ui_enabled: 'false', ui_port: '9749' } },
+    config: { graphUrl: 'https://cbm.example.com/graph/' },
+    deps: { probeGraphUiHttp: async function () { return { ok: true }; } },
+  });
+  await made.keeper.start();
+  const overridden = made.keeper.status().graphUi;
+  assert.equal(overridden.state, 'ok');
+  assert.equal(overridden.source, 'override');
+  assert.equal(overridden.url, 'https://cbm.example.com/graph/?tab=graph');
+  assert.equal(made.keeper.list()[0].graphUrl, 'https://cbm.example.com/graph/?tab=graph&project=over');
+
+  const bad = await makeKeeper(t, {
+    projects: [fakeProject({ name: 'bad', rootPath: '/srv/graph-bad', graphHead: '3449ba2' })],
+    sha: { '/srv/graph-bad': '3449ba2' },
+    cbm: { config: { auto_index: 'false', auto_watch: 'false', ui_enabled: 'true', ui_port: '9749' } },
+    config: { graphUrl: 'file:///etc/passwd' },
+    deps: { probeGraphUiHttp: async function () { return { ok: true }; } },
+  });
+  await bad.keeper.start();
+  assert.equal(bad.keeper.status().graphUi.state, 'invalid');
+  assert.equal(bad.keeper.status().graphUi.url, undefined);
+  assert.equal(bad.keeper.list()[0].graphUrl, undefined);
 });

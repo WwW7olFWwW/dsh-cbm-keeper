@@ -24,6 +24,7 @@ import { KeeperState } from '../lib/state.js';
 class Checks {
   constructor() {
     this.passed = 0;
+    this.skipped = 0;
     this.failures = [];
   }
 
@@ -41,6 +42,16 @@ class Checks {
     }
     this.failures.push(label + (detail === undefined ? '' : ' — ' + detail));
     console.log('  FAIL  ' + label + (detail === undefined ? '' : ' — ' + detail));
+  }
+
+  /**
+   * 記錄一項因資料條件不成立而略過的檢查（不算通過，也不算失敗）。
+   * @param {string} label - 略過原因。
+   * @returns {void}
+   */
+  skip(label) {
+    this.skipped += 1;
+    console.log('  SKIP  ' + label);
   }
 }
 
@@ -107,20 +118,45 @@ async function main() {
     const names = projects.map(function (project) { return project.name; });
     checks.ok('沒有殘留已刪除的 cbm-keeper-e2e', !names.includes('cbm-keeper-e2e'), names.join(','));
 
-    const mark = projects.find(function (project) { return project.name === 'sample-repo'; });
-    checks.ok('sample-repo 被納管', mark !== undefined);
-    if (mark !== undefined) {
-      checks.ok('sample-repo 的圖譜 HEAD 可讀', typeof mark.graphHeadShort === 'string', String(mark.graphHeadShort));
-      checks.ok('sample-repo 的判據是 HEAD 比對', mark.confidence === 'head', String(mark.confidence));
-      checks.ok('落後量是數字', typeof mark.behindBy === 'number', String(mark.behindBy));
+    // 專案名不寫死：這支腳本要在別人的機器上也能跑，樣本一律從真實清單裡挑。
+    // 想指定某個專案就 `node tools/verify-keeper.mjs <專案名>`。
+    const wanted = process.argv[2];
+    const sample = wanted === undefined
+      ? projects.find(function (project) {
+        return typeof project.graphHeadShort === 'string' && project.confidence === 'head';
+      })
+      : projects.find(function (project) { return project.name === wanted; });
+    if (sample === undefined) {
+      checks.skip(wanted === undefined
+        ? '找不到可用來驗落後判定的樣本專案'
+        : '找不到專案 ' + wanted);
+    } else {
+      checks.ok('樣本專案被納管：' + sample.name, true);
+      checks.ok(sample.name + ' 的圖譜 HEAD 可讀', typeof sample.graphHeadShort === 'string', String(sample.graphHeadShort));
+      checks.ok(sample.name + ' 的判據是 HEAD 比對', sample.confidence === 'head', String(sample.confidence));
+      checks.ok('落後量是數字', typeof sample.behindBy === 'number', String(sample.behindBy));
     }
 
-    const hyper = projects.find(function (project) { return project.name === 'hyper'; });
-    if (hyper !== undefined) {
-      checks.ok('無提交的專案不被宣稱新鮮（stale 為 null）', hyper.stale === null, String(hyper.stale));
+    const graphUi = keeper.status().graphUi;
+    checks.ok('圖譜 UI 狀態可讀', graphUi !== undefined && typeof graphUi.state === 'string', JSON.stringify(graphUi));
+    if (graphUi !== undefined && graphUi.state === 'ok') {
+      checks.ok('圖譜 UI 的連結指向本機埠', /^http:\/\/127\.0\.0\.1:[0-9]+\/\?tab=graph$/.test(String(graphUi.url)), String(graphUi.url));
+      checks.ok('圖譜 UI 的探測結果是布林', typeof graphUi.reachable === 'boolean', String(graphUi.reachable));
+      checks.ok('每個已納管專案都拿得到深連結',
+        projects.every(function (project) { return typeof project.graphUrl === 'string' && project.graphUrl.includes('project='); }),
+        projects.map(function (project) { return String(project.graphUrl); }).join(' '));
+    } else {
+      checks.skip('CBM 圖譜 UI 目前不是 ' + "'ok'（state=" + String(graphUi === undefined ? 'undefined' : graphUi.state) + '）');
+    }
+
+    const unborn = projects.find(function (project) { return project.stale === null; });
+    if (unborn !== undefined) {
+      checks.ok('無提交的專案不被宣稱新鮮（stale 為 null）', unborn.stale === null, String(unborn.stale));
       checks.ok('無提交的專案有一句人話解釋',
-        typeof hyper.lastCheckedError === 'string' && hyper.lastCheckedError.includes('unborn HEAD'),
-        String(hyper.lastCheckedError).slice(0, 80));
+        typeof unborn.lastCheckedError === 'string' && unborn.lastCheckedError.includes('unborn HEAD'),
+        String(unborn.lastCheckedError).slice(0, 80));
+    } else {
+      checks.skip('目前沒有「尚無提交」的專案可驗');
     }
 
     console.log('階段 B — 上游刪除專案時的收斂（替換 CbmClient）');
@@ -171,7 +207,7 @@ async function main() {
   }
 
   console.log('');
-  console.log('通過 ' + String(checks.passed) + ' 項，失敗 ' + String(checks.failures.length) + ' 項');
+  console.log('通過 ' + String(checks.passed) + ' 項，失敗 ' + String(checks.failures.length) + ' 項，略過 ' + String(checks.skipped) + ' 項');
   if (checks.failures.length > 0) {
     for (const failure of checks.failures) console.log('  - ' + failure);
     process.exitCode = 1;

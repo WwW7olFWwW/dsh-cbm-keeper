@@ -3,7 +3,7 @@
 ## 跑起來
 
 ```bash
-node --test test/*.test.js             # 單元測試（106 項，不需要真的索引）
+node --test test/*.test.js             # 單元測試（115 項，不需要真的索引）
 node tools/verify-keeper.mjs           # 對真實 CBM CLI 掃描（唯讀，需要 CLI 在 PATH）
 node tools/verify-client.mjs           # 客戶端渲染驗證（需要 dsh web 在跑）
 ```
@@ -32,8 +32,9 @@ systemctl --user restart dsh-web
 
 | 項目 | 證據 |
 |---|---|
-| 單元測試（NFR-7） | `node --test test/*.test.js` → **106 tests / 106 pass / 0 fail / 0 todo**（Node 20／22／24 皆同） |
-| Host 半邊對真實 CLI | `node tools/verify-keeper.mjs` → **19/19**（唯讀掃描 + 孤兒收斂 + 未納管不得重建） |
+| 單元測試（NFR-7） | `node --test test/*.test.js` → **115 tests / 115 pass / 0 fail / 0 todo**（Node 20／22／24 皆同） |
+| Host 半邊對真實 CLI | `node tools/verify-keeper.mjs` → **23/23**（唯讀掃描 + 孤兒收斂 + 未納管不得重建 + 圖譜 UI 連結） |
+| 圖譜 UI 連結 | 同一支驗證器的最後四項：連結指向 `127.0.0.1:<ui_port>/?tab=graph`、探測結果是布林、每個已納管專案都有 `?project=` 深連結（對 `127.0.0.1:9749` 實測） |
 | 客戶端渲染 | `node tools/verify-client.mjs` → **29/29**（用執行中伺服器的真實回應逐值比對；條數是資料條件式，專案沒有 head 時會少一至兩條） |
 | CLI 解析（FR-5） | `cliPath=~/.local/bin/codebase-memory-mcp`, `source=PATH`, `cliVersion=0.11.0`, `supported=true` |
 | 自動納管（FR-7/US-4） | 拋棄式倉庫索引後，下一次 `POST /check` 即被納管並建立監看 |

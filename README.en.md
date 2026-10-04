@@ -25,6 +25,7 @@ codebase-memory-mcp config set auto_index false
 - **Bypasses the MCP 60-second cap**: rebuilds run as a child process, `codebase-memory-mcp cli index_repository`.
 - **Catches up on save**: per-project file watching with debounce; falls back to `node:fs.watch` without chokidar.
 - **Observability and control**: the settings card and the REST control plane share one source, so every card action can be hit with curl.
+- **One-click jump to the graph**: the card and every project row link into the CBM graph UI (`?project=` deep-links straight to one project); when the UI is off or unreachable it says so instead of offering a button that breaks.
 
 ## Compatibility
 
@@ -51,7 +52,7 @@ rm -rf ~/.dsh/cbm-keeper
 ## Development
 
 ```sh
-node --test test/*.test.js   # 106 unit tests, no real index needed
+node --test test/*.test.js   # 115 unit tests, no real index needed
 ```
 
 After changing `lib/`, run `systemctl --user restart dsh-web` for it to take effect (the ESM module cache of a `link:` install is not hot-loaded).

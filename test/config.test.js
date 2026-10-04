@@ -305,3 +305,15 @@ test('isProjectSelected：exclude 優先，include 留空＝全選', function ()
   assert.equal(isProjectSelected('a', both), true);
   assert.equal(isProjectSelected('b', both), false);
 });
+
+test('resolveKeeperConfig：graphUrl 去空白；留空＝由 CBM 的 ui_port 自動推導', function () {
+  assert.equal(resolveKeeperConfig(undefined).graphUrl, '', '沒有設定時是空字串，不是 undefined');
+  assert.equal(resolveKeeperConfig({ graphUrl: '  https://cbm.example.com/graph/  ' }).graphUrl, 'https://cbm.example.com/graph/');
+  assert.equal(resolveKeeperConfig({ graphUrl: '   ' }).graphUrl, '');
+  assert.equal(resolveKeeperConfig({ graphUrl: 42 }).graphUrl, '', '非字串一律回空字串，不讓後續拼字串時中毒');
+});
+
+test('CONFIG_FIELDS：graphUrl 是設定頁的一員', function () {
+  assert.equal(CONFIG_FIELDS.includes('graphUrl'), true);
+  assert.equal(CONFIG_DEFAULTS.graphUrl, '');
+});

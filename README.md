@@ -25,6 +25,7 @@ codebase-memory-mcp config set auto_index false
 - **繞過 MCP 的 60 秒上限**：重建以子行程呼叫 `codebase-memory-mcp cli index_repository`。
 - **存檔後自動追上**：每專案檔案監看與防抖；chokidar 缺席時退回 `node:fs.watch`。
 - **觀測與控制**：設定頁卡片與 REST 控制面同源，卡片上的每個動作都能用 curl 打。
+- **一鍵開圖**：卡片與每個專案列都有 CBM 圖譜 UI 的連結（`?project=` 直達單一專案）；UI 沒開或連不上時如實標示，不給點了會壞的按鈕。
 
 ## 相容版本
 
@@ -51,7 +52,7 @@ rm -rf ~/.dsh/cbm-keeper
 ## 開發
 
 ```sh
-node --test test/*.test.js   # 106 項單元測試，不需要真的索引
+node --test test/*.test.js   # 115 項單元測試，不需要真的索引
 ```
 
 改完 `lib/` 需 `systemctl --user restart dsh-web` 才生效（`link:` 安裝的 ESM 快取不會熱載入）。

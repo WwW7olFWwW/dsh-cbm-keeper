@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **圖譜 UI 連結**：卡片標題列的「開啟圖譜」與每個專案列的「圖譜」，直達 CBM 自帶的 HTTP 圖譜介面（專案列用 `?project=<name>&tab=graph` 深連結）。三態如實呈現：`ui_enabled=false` 時只顯示 `--ui=true` 的提示、探測不到時標明「UI 未回應」、可連才給連結；本插件不改上游的 `ui_enabled`。
+- 新設定欄位 `graphUrl`（留空＝由 CBM 的 `ui_port` 推導）供遠端／反向代理情境覆寫；`GET /api/cbm-keeper/state` 的 `status.graphUi` 與每個專案的 `graphUrl` 對外可見。
+- `tools/verify-keeper.mjs`：新增圖譜 UI 連結的四項檢查（共 23 項），並把寫死的專案名改成從真實清單挑樣本（可用 `node tools/verify-keeper.mjs <專案名>` 指定），另加 SKIP 統計。
+
 ## [0.1.0] - 2026-10-04
 
 首個公開發布。此版本在本機完整安裝環境上逐項驗證過（見 [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) 的「驗證現況」）。
@@ -37,7 +43,7 @@
 
 - 不改 CBM 本體、不改 DSH 本體、不安裝 systemd timer；安裝 bundle 不覆寫 profile 既有的
   `cordis.patch.yml`。
-- 單元測試 106 項，`node --test "test/*.test.js"` 全綠，不需要真的索引；CI 在 Node 20／22／24
+- 單元測試 115 項，`node --test test/*.test.js` 全綠，不需要真的索引；CI 在 Node 20／22／24
   與「有／沒有 chokidar」六種組合上跑，且在沒有安裝 DSH 的機器上也能全綠（解析路徑用夾具驗證）。
 
 [Unreleased]: https://github.com/WwW7olFWwW/dsh-cbm-keeper/compare/v0.1.0...HEAD
