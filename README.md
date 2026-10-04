@@ -31,7 +31,7 @@ codebase-memory-mcp config set auto_index false
 
 | 插件 | DSH | Codebase Memory |
 |---|---|---|
-| `0.1.x` | 0.2（`dsh web`） | `codebase-memory-mcp@0.11.0`（清單外版本在卡片上轉為警告） |
+| `0.1.x` | `>=0.2.0-rc.2`（實測 0.2.0-rc.2；由 `engines.dsh` 宣告） | `codebase-memory-mcp@0.11.0`（清單外版本在卡片上轉為警告） |
 
 ## 設定
 

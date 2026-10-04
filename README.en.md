@@ -31,7 +31,7 @@ codebase-memory-mcp config set auto_index false
 
 | Plugin | DSH | Codebase Memory |
 |---|---|---|
-| `0.1.x` | 0.2 (`dsh web`) | `codebase-memory-mcp@0.11.0` (versions outside the list turn into a card warning) |
+| `0.1.x` | `>=0.2.0-rc.2` (tested on 0.2.0-rc.2; declared via `engines.dsh`) | `codebase-memory-mcp@0.11.0` (versions outside the list turn into a card warning) |
 
 ## Configuration
 
