@@ -37,7 +37,8 @@
 
 - 不改 CBM 本體、不改 DSH 本體、不安裝 systemd timer；安裝 bundle 不覆寫 profile 既有的
   `cordis.patch.yml`。
-- 單元測試 105 項，`node --test "test/*.test.js"` 全綠，不需要真的索引。
+- 單元測試 106 項，`node --test "test/*.test.js"` 全綠，不需要真的索引；CI 在 Node 20／22／24
+  與「有／沒有 chokidar」六種組合上跑，且在沒有安裝 DSH 的機器上也能全綠（解析路徑用夾具驗證）。
 
 [Unreleased]: https://github.com/WwW7olFWwW/dsh-cbm-keeper/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/WwW7olFWwW/dsh-cbm-keeper/releases/tag/v0.1.0

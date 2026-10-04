@@ -3,7 +3,7 @@
 [![CI](https://github.com/WwW7olFWwW/dsh-cbm-keeper/actions/workflows/ci.yml/badge.svg)](https://github.com/WwW7olFWwW/dsh-cbm-keeper/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
-[![Tests](https://img.shields.io/badge/tests-105%20pass-brightgreen.svg)](test)
+[![Tests](https://img.shields.io/badge/tests-106%20pass-brightgreen.svg)](test)
 
 DSH × Codebase Memory 圖譜保鮮插件 —— **English: [`README.en.md`](README.en.md)**
 
@@ -215,7 +215,7 @@ systemctl --user restart dsh-web
 
 | 項目 | 證據 |
 |---|---|
-| 單元測試（NFR-7） | `node --test "test/*.test.js"` → **105 tests / 105 pass / 0 fail / 0 todo** |
+| 單元測試（NFR-7） | `node --test "test/*.test.js"` → **106 tests / 106 pass / 0 fail / 0 todo** |
 | Host 半邊對真實 CLI | `node tools/verify-keeper.mjs` → **19/19**（唯讀掃描 + 孤兒收斂 + 未納管不得重建） |
 | 客戶端渲染 | `node tools/verify-client.mjs` → **29/29**（用執行中伺服器的真實回應逐值比對；條數是資料條件式，專案沒有 head 時會少一至兩條） |
 | CLI 解析（FR-5） | `cliPath=~/.local/bin/codebase-memory-mcp`, `source=PATH`, `cliVersion=0.11.0`, `supported=true` |

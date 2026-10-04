@@ -8,7 +8,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -73,14 +73,57 @@ test('profilePackageRoots：把真的 link 了本插件的 profile 排在前面'
   assert.deepEqual(profilePackageRoots({ DSH_HOME: join(ISOLATED_HOME, '.dsh') }), []);
 });
 
-test('resolveSchemastery：宿主行程條件下（process.env 沒有 DSH_PROFILE_DIR）仍取得 schemastery', function () {
+test('resolveSchemastery：宿主行程條件下（process.env 沒有 DSH_PROFILE_DIR）仍走 profile 解析根', function () {
   // 這條是「POST /config 可寫」的真正守門：dsh-shell-env 只把 DSH_PROFILE_DIR 注入
   // 每一次模型 shell 呼叫的子行程，載入插件的宿主行程裡沒有它（實測 /proc/<pid>/environ
   // 完全沒有 DSH_* 變數）。少了這一條，重啟後 Config 仍然是 undefined。
+  //
+  // 夾具自備一個假的 DSH home 與假的 @deepseek-ai/schemastery，所以這條在任何機器上
+  // 都可重現（CI 上沒有安裝 DSH 也照樣跑）；真機路徑由下一條測試負責。
+  const home = mkdtempSync(join(tmpdir(), 'cbm-keeper-host-'));
+  try {
+    const fixture = join(home, 'profiles', 'web', 'node_modules', '@deepseek-ai', 'schemastery');
+    mkdirSync(fixture, { recursive: true });
+    writeFileSync(
+      join(fixture, 'package.json'),
+      JSON.stringify({ name: '@deepseek-ai/schemastery', version: '0.0.0-fixture', main: 'index.js' }),
+    );
+    writeFileSync(
+      join(fixture, 'index.js'),
+      "module.exports = { fixtureMarker: 'dsh-cbm-keeper-fixture', object: function object() { return {}; } };\n",
+    );
+    // web 把本插件 link 進來，排序上必須排在沒有 link 的 profile 前面（見上一條測試）。
+    symlinkSync(PLUGIN_DIR, join(home, 'profiles', 'web', 'node_modules', 'dsh-cbm-keeper'), 'dir');
+
+    const hostLike = { ...process.env, HOME: home, DSH_HOME: home };
+    delete hostLike.DSH_PROFILE_DIR;
+    const roots = schemasteryRequireRoots(
+      hostLike,
+      join(home, 'cwd'),
+      pathToFileURL(join(PLUGIN_DIR, 'lib', 'config.js')).href,
+    );
+    assert.ok(
+      roots.includes(join(home, 'profiles', 'web', 'package.json')),
+      '宿主條件下的解析根必須包含 profile 的 package.json',
+    );
+    const z = resolveSchemastery(roots);
+    assert.notEqual(z, null, '宿主條件下必須仍解析得到 @deepseek-ai/schemastery');
+    assert.equal(typeof z.object, 'function');
+    assert.equal(z.fixtureMarker, 'dsh-cbm-keeper-fixture', '必須命中 profile 的解析根，而不是別的來源');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('resolveSchemastery：真機宿主條件下取得 schemastery（需要本機裝過 DSH）', function (t) {
   const hostLike = { ...process.env };
   delete hostLike.DSH_PROFILE_DIR;
   const z = resolveSchemastery(schemasteryRequireRoots(hostLike, ISOLATED_HOME, import.meta.url));
-  assert.notEqual(z, null, '宿主條件下必須仍解析得到 @deepseek-ai/schemastery');
+  if (z === null) {
+    // 這台機器沒有 DSH profile，沒有「真機解析根」可驗；上一條夾具測試已守住同一段程式碼。
+    t.skip('本機找不到 @deepseek-ai/schemastery（未安裝 DSH），跳過真機解析根驗證');
+    return;
+  }
   assert.equal(typeof z.object, 'function');
 });
 

@@ -16,7 +16,7 @@ node --test "test/*.test.js"
 
 **不要寫成 `node --test test/`**：Node 會把 `test/` 當成模組而非測試目錄，直接解析失敗。
 
-目前的基準是 **105 tests / 105 pass / 0 fail**。送 PR 前請確認沒有回歸。
+目前的基準是 **106 tests / 106 pass / 0 fail**。送 PR 前請確認沒有回歸。
 
 想跑真實 CLI 的唯讀驗證（需要 `codebase-memory-mcp` 在 PATH）：
 
