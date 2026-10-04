@@ -2,7 +2,9 @@
 
 English | [中文](README.md)
 
-A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plugin that keeps the [Codebase Memory](https://github.com/DeusData/codebase-memory-mcp) knowledge graph in step with each indexed project's git HEAD. Wired up with nothing but a manual MCP row, the graph goes stale silently (33 hours / 37 commits / 988 files behind in one measured case, while everyone believed it was current); this plugin handles staleness detection, conditional rebuild and observability — **without modifying CBM, without modifying DSH, and without a systemd timer**.
+Hooking [Codebase Memory](https://github.com/DeusData/codebase-memory-mcp) (CBM) into [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) with a single MCP row **works for queries but leaves the graph silently stale**: the MCP `cwd` is a profile-level constant (so CBM's watching and auto-index land on the wrong tree), CBM's built-in watcher produces no observable rebuild, and the MCP tool `index_repository` has a 60-second cap. In one measured case the graph was 33 hours / 37 commits / 988 files behind while everyone believed it was current.
+
+`dsh-cbm-keeper` gets **staleness detection, conditional rebuild and observability** right — **without modifying CBM, without modifying DSH, and without a systemd timer**.
 
 ## Installation
 

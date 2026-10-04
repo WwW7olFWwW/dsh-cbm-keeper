@@ -2,7 +2,9 @@
 
 [English](README.en.md) | 中文
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）插件：讓 [Codebase Memory](https://github.com/DeusData/codebase-memory-mcp) 的知識圖譜自動跟上每個已索引專案的 git HEAD。只用一行 MCP row 接 CBM 時圖譜會靜默過期（實測落後 33 小時／37 個提交／988 個檔案，而所有人都以為它是新的）；本插件負責落後判定、條件式重建與觀測——**不改 CBM、不改 DSH、不需要 systemd timer**。
+用一行 MCP row 把 [Codebase Memory](https://github.com/DeusData/codebase-memory-mcp)（CBM）接進 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）時，**痛點不在查詢，而是圖譜會靜默過期**：MCP 的 `cwd` 是 profile 級常數（CBM 的監看與 auto-index 因此落在錯的樹）、CBM 內建 watcher 不產生可觀測的重建、MCP 工具 `index_repository` 有 60 秒上限。實測圖譜曾落後 33 小時／37 個提交／988 個檔案，而所有人都以為它是新的。
+
+`dsh-cbm-keeper` 把**落後判定、條件式重建與觀測**這三件事做對 —— **不改 CBM、不改 DSH、不需要 systemd timer**。
 
 ## 安裝
 
