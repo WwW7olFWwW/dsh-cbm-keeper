@@ -18,7 +18,11 @@ import { join } from 'node:path';
 export async function makeTempDir(t, prefix) {
   const dir = await mkdtemp(join(tmpdir(), (prefix ?? 'cbm-test-') + '-'));
   t.after(async function () {
-    await rm(dir, { recursive: true, force: true });
+    // 受測程式可能在清理途中才落盤（非同步的狀態寫入），讓遞迴刪除撞上
+    // ENOTEMPTY。那是競態、不是測試失敗，所以交給 Node 自己退避重試；重試完
+    // 仍失敗就吞掉——暫存目錄留在 tmpdir 由系統清，好過讓整個測試檔變紅。
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+      .catch(function () { return undefined; });
   });
   return dir;
 }
