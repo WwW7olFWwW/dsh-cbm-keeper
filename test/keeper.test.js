@@ -247,11 +247,130 @@ test('FR-3：HEAD 相同但工作樹 dirty 時，includeDirty 決定要不要重
   const strict = included.keeper.list()[0];
   assert.equal(strict.stale, true);
   assert.deepEqual(strict.reasons, ['head-match-but-dirty']);
+
+  // H1：光是 dirty 放著不動，掃描不再排重建；要有存檔活動才值得重跑。
+  await new Promise(function (resolve) { setTimeout(resolve, 300); });
+  assert.deepEqual(await readCalls(included.callsFile), [], '沒有活動的 dirty 專案不該在掃描時重跑');
+  await included.keeper.onWatcherTrigger(included.keeper.records.get(root));
   await waitFor(async function () { return (await readCalls(included.callsFile)).length > 0; }, {
     timeoutMs: 8000,
-    label: 'dirty 觸發重建',
+    label: 'dirty 在存檔後觸發重建',
   });
   assert.equal((await readCalls(included.callsFile)).length, 1);
+});
+
+test('H1：dirty 專案沒有任何工作樹活動時，掃描不再週期性排重建', async function (t) {
+  const root = '/srv/idle-dirty';
+  const made = await makeKeeper(t, {
+    projects: [fakeProject({ name: 'idle-dirty', rootPath: root, graphHead: '3449ba2' })],
+    sha: { [root]: '3449ba2' },
+    facts: { dirty: true },
+    config: { includeDirty: true },
+  });
+
+  await made.keeper.start();
+  await made.keeper.refresh('timer');
+  await new Promise(function (resolve) { setTimeout(resolve, 300); });
+
+  const record = made.keeper.list()[0];
+  assert.equal(record.dirty, true, '工作樹確實是 dirty');
+  assert.equal(record.stale, true, 'includeDirty=true 時仍算落後（卡片要看得到）');
+  assert.deepEqual(record.reasons, ['head-match-but-dirty']);
+  assert.deepEqual(await readCalls(made.callsFile), [], '光是 dirty、沒有任何存檔活動，不該反覆重建');
+  assert.equal(made.keeper.status().queue.length, 0);
+});
+
+test('H1：dirty 專案在最後一次索引之後有存檔活動時，仍會排重建', async function (t) {
+  const root = '/srv/active-dirty';
+  const made = await makeKeeper(t, {
+    projects: [fakeProject({ name: 'active-dirty', rootPath: root, graphHead: '3449ba2' })],
+    sha: { [root]: '3449ba2' },
+    facts: { dirty: true },
+    config: { includeDirty: true },
+  });
+
+  await made.keeper.start();
+  await made.keeper.refresh('timer');
+  assert.deepEqual(await readCalls(made.callsFile), []);
+
+  // 模擬一次存檔：監看觸發 → 這是「有活動」的證據。
+  await made.keeper.onWatcherTrigger(made.keeper.records.get(root));
+  await waitFor(async function () { return (await readCalls(made.callsFile)).length > 0; }, {
+    timeoutMs: 8000,
+    label: '存檔後仍要追上',
+  });
+  assert.equal((await readCalls(made.callsFile)).length, 1, '一次活動換一次重建');
+});
+
+test('H1：冷卻期內的自動重建被跳過，強制重建不受限', async function (t) {
+  const root = '/srv/cooldown';
+  const made = await makeKeeper(t, {
+    projects: [fakeProject({ name: 'cooldown', rootPath: root, graphHead: '3449ba2' })],
+    sha: { [root]: '96cd57b' },
+    facts: { behindBy: 3 },
+    config: { rebuildCooldownSeconds: 3600 },
+  });
+
+  await made.keeper.start();
+  await waitFor(function () { return made.keeper.list()[0].rebuildState === 'idle'; }, {
+    timeoutMs: 8000,
+    label: '第一次重建結束',
+  });
+  assert.equal((await readCalls(made.callsFile)).length, 1);
+
+  // 等 drain 真的收尾：runRebuild 先把 rebuildState 設回 idle，drainLoop 才清 running。
+  // 在那個窗口裡排隊會被「執行中」擋掉，與冷卻無關。
+  await made.keeper.drain();
+
+  // 冷卻期內：自動排入（掃描／監看）必須被擋下，並留下可追的日誌。
+  assert.equal(made.keeper.enqueue(root, 'watch'), false, '冷卻期內不得自動重建');
+  assert.equal(made.keeper.status().queue.length, 0);
+  const skipped = made.log.entries.filter(function (entry) { return entry.event === 'rebuild.skipped'; });
+  assert.equal(skipped.length, 1);
+  assert.equal(skipped[0].data.project, 'cooldown');
+
+  // 人工／強制不受冷卻限制。
+  assert.equal(made.keeper.enqueue(root, 'manual', undefined, { force: true }), true);
+  await waitFor(function () { return made.keeper.list()[0].rebuildState === 'idle'; }, {
+    timeoutMs: 8000,
+    label: '強制重建結束',
+  });
+  assert.equal((await readCalls(made.callsFile)).length, 2);
+});
+
+test('H1：rebuildCooldownSeconds=0 時不設冷卻', async function (t) {
+  const root = '/srv/no-cooldown';
+  const made = await makeKeeper(t, {
+    projects: [fakeProject({ name: 'no-cooldown', rootPath: root, graphHead: '3449ba2' })],
+    sha: { [root]: '96cd57b' },
+    facts: { behindBy: 3 },
+    config: { rebuildCooldownSeconds: 0 },
+  });
+
+  await made.keeper.start();
+  await waitFor(function () { return made.keeper.list()[0].rebuildState === 'idle'; }, {
+    timeoutMs: 8000,
+    label: '第一次重建結束',
+  });
+  await made.keeper.drain();
+  assert.equal(made.keeper.enqueue(root, 'watch'), true, '關閉冷卻後照舊排入');
+});
+
+test('H5：讀不到 CBM 設定時保留錯誤、給具名警告，並在圖譜 UI 狀態附註原因', async function (t) {
+  const root = '/srv/no-upstream-config';
+  const made = await makeKeeper(t, {
+    projects: [fakeProject({ name: 'no-upstream-config', rootPath: root, graphHead: '3449ba2' })],
+    sha: { [root]: '3449ba2' },
+    cbm: { configFail: true },
+  });
+
+  await made.keeper.start();
+  const status = made.keeper.status();
+  assert.deepEqual(status.upstreamConfig, {}, '讀不到就是空的，不能假裝讀到');
+  assert.equal(typeof status.upstreamConfigError, 'string');
+  const warning = status.warnings.find(function (entry) { return entry.code === 'upstream-config-unreadable'; });
+  assert.notEqual(warning, undefined, '必須有具名警告，不能靜默');
+  assert.match(status.graphUi.note, /讀不到 CBM 設定/);
 });
 
 test('FR-14：兩個專案的重建序列化執行，絕不重疊', async function (t) {
@@ -511,7 +630,7 @@ test('FR-16：UI 沒回應時仍保留網址，但標成 reachable=false', async
   assert.equal(flips[0].data.reachable, false);
 });
 
-test('FR-16：graphUrl 覆寫優先，非 http(s) 的覆寫直接判定為非法', async function (t) {
+test('FR-16：graphUrl 覆寫優先；非 http(s) 的覆寫被忽略並退回推導', async function (t) {
   const root = '/srv/graph-override';
   const made = await makeKeeper(t, {
     projects: [fakeProject({ name: 'over', rootPath: root, graphHead: '3449ba2' })],
@@ -535,7 +654,11 @@ test('FR-16：graphUrl 覆寫優先，非 http(s) 的覆寫直接判定為非法
     deps: { probeGraphUiHttp: async function () { return { ok: true }; } },
   });
   await bad.keeper.start();
-  assert.equal(bad.keeper.status().graphUi.state, 'invalid');
-  assert.equal(bad.keeper.status().graphUi.url, undefined);
-  assert.equal(bad.keeper.list()[0].graphUrl, undefined);
+  // M10：非法覆寫不再讓所有連結消失——忽略它、退回由 ui_port 推導，並在卡片上說明。
+  const fallback = bad.keeper.status().graphUi;
+  assert.equal(fallback.state, 'ok');
+  assert.equal(fallback.source, 'config');
+  assert.equal(fallback.url, 'http://127.0.0.1:9749/?tab=graph');
+  assert.match(fallback.note, /不是 http/);
+  assert.equal(bad.keeper.list()[0].graphUrl, 'http://127.0.0.1:9749/?tab=graph&project=bad');
 });

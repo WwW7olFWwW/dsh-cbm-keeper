@@ -12,12 +12,13 @@ import { API_PREFIX } from '../lib/constants.js';
 import { makeFakeLog } from './helpers/env.js';
 import { makeExchange, makeStubKeeper } from './helpers/http.js';
 
-/** 文件記載的六條路由。 */
+/** 文件記載的七條路由。 */
 const DOCUMENTED_PATHS = [
   '/state',
   '/log',
   '/check',
   '/rebuild',
+  '/cancel',
   '/watchers',
   '/config',
 ];
@@ -40,6 +41,7 @@ function makeFixture(options) {
     config: settings.config ?? function () { return { mode: 'full', scanMs: 300000 }; },
   };
   if (settings.updateConfig !== undefined) deps.updateConfig = settings.updateConfig;
+  if (settings.configValues !== undefined) deps.configValues = settings.configValues;
   const routes = makeRoutes(deps);
   const byPath = {};
   for (const route of routes) byPath[route.path] = route;
@@ -58,7 +60,7 @@ async function call(route, options) {
   return exchange.read();
 }
 
-test('makeRoutes 只註冊文件記載的六條 exact 路由', function () {
+test('makeRoutes 只註冊文件記載的七條 exact 路由', function () {
   const fixture = makeFixture();
   const paths = fixture.routes.map(function (route) { return route.path; });
   assert.deepEqual(paths, DOCUMENTED_PATHS.map(function (suffix) { return API_PREFIX + suffix; }));
@@ -66,6 +68,64 @@ test('makeRoutes 只註冊文件記載的六條 exact 路由', function () {
     assert.equal(route.kind, 'exact');
     assert.equal(typeof route.handler, 'function');
   }
+});
+
+test('GET /config 分別回可寫的 config 與執行期 runtime，POST 吃的是 config 的那組欄位名', async function () {
+  const fixture = makeFixture({
+    config: function () { return { mode: 'full', scanMs: 300000, rebuildTimeoutMs: 1800000, extensions: ['ts'] }; },
+    configValues: function () { return { mode: 'full', scanMinutes: 5, rebuildTimeoutSeconds: 1800, extensions: '' }; },
+    keeper: { statusPayload: { revision: 1, queue: [], upstreamConfig: { ui_port: '9749' } } },
+  });
+  const got = await call(fixture.byPath[API_PREFIX + '/config'], { method: 'GET' });
+
+  assert.equal(got.status, 200);
+  const payload = got.json();
+  // config 就是「可以原樣改一改 POST 回來」的那一份：欄位名與 schema 一致。
+  assert.deepEqual(payload.config, { mode: 'full', scanMinutes: 5, rebuildTimeoutSeconds: 1800, extensions: '' });
+  // runtime 是執行期形狀（毫秒、展開後的陣列），只供觀測，不要拿來 POST。
+  assert.equal(payload.runtime.scanMs, 300000);
+  assert.deepEqual(payload.runtime.extensions, ['ts']);
+  assert.deepEqual(payload.upstream, { ui_port: '9749' });
+});
+
+test('POST /check：帶不存在的 id 回 404，不再回 502「檢查失敗」', async function () {
+  const fixture = makeFixture({
+    keeper: { listPayload: [{ key: '/srv/a', name: 'a', selected: true }] },
+  });
+  const missing = await call(fixture.byPath[API_PREFIX + '/check'], {
+    method: 'POST', body: JSON.stringify({ id: '/srv/nope' }),
+  });
+  assert.equal(missing.status, 404);
+  assert.match(missing.json().error, /找不到/);
+  assert.deepEqual(fixture.keeper.checkCalls, [], '不存在的 id 不該往下打 CLI');
+});
+
+test('POST /rebuild：帶不存在的 id 回 404，不再回「已對上 HEAD」的誤導訊息', async function () {
+  const fixture = makeFixture({
+    keeper: { listPayload: [{ key: '/srv/a', name: 'a', selected: true, stale: false }] },
+  });
+  const missing = await call(fixture.byPath[API_PREFIX + '/rebuild'], {
+    method: 'POST', body: JSON.stringify({ id: '/srv/nope' }),
+  });
+  assert.equal(missing.status, 404);
+  assert.match(missing.json().error, /找不到/);
+  assert.equal(fixture.keeper.enqueued.length, 0);
+});
+
+test('POST /cancel：轉呼叫 keeper.cancelRunning，並回報有沒有真的取消', async function () {
+  const fixture = makeFixture({
+    keeper: {
+      cancelRunning: function () { return true; },
+      statusPayload: { revision: 2, queue: [], running: { key: '/srv/a', reason: 'manual' } },
+    },
+  });
+  const cancelled = await call(fixture.byPath[API_PREFIX + '/cancel'], { method: 'POST', body: '{}' });
+  assert.equal(cancelled.status, 200);
+  assert.equal(cancelled.json().cancelled, true);
+
+  const idle = makeFixture();
+  const none = await call(idle.byPath[API_PREFIX + '/cancel'], { method: 'POST', body: '{}' });
+  assert.equal(none.json().cancelled, false, '沒有在跑的重建時要說沒有，而不是假裝成功');
 });
 
 test('GET /state 回狀態、專案、caveats 與日誌，並支援 log 查詢參數', async function () {
@@ -110,7 +170,7 @@ test('GET /log 回日誌並套用 limit', async function () {
 });
 
 test('POST /check 帶 id 只檢查該專案，失敗時回 502', async function () {
-  const fixture = makeFixture();
+  const fixture = makeFixture({ keeper: { listPayload: [{ key: '/srv/a', name: 'a', selected: true }] } });
   const ok = await call(fixture.byPath[API_PREFIX + '/check'], {
     method: 'POST',
     url: API_PREFIX + '/check',

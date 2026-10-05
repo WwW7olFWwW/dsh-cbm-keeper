@@ -67,6 +67,8 @@ export function makeStubKeeper(overrides) {
     caveatsPayload: [{ code: 'x', message: 'y' }],
     checkResult: { ok: true },
     watcherResult: { ok: true, affected: 0 },
+    cancelled: false,
+    cancelRunning: function () { return stub.cancelled; },
     status: function () { return stub.statusPayload; },
     list: function () { return stub.listPayload; },
     caveats: function () { return stub.caveatsPayload; },

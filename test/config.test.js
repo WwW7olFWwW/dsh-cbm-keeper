@@ -21,6 +21,7 @@ import {
   resolveKeeperConfig,
   resolveSchemastery,
   schemasteryRequireRoots,
+  unknownConfigKeys,
 } from '../lib/config.js';
 import { DEFAULT_WATCH_EXCLUDES, DEFAULT_WATCH_EXTENSIONS } from '../lib/constants.js';
 
@@ -316,4 +317,45 @@ test('resolveKeeperConfig：graphUrl 去空白；留空＝由 CBM 的 ui_port �
 test('CONFIG_FIELDS：graphUrl 是設定頁的一員', function () {
   assert.equal(CONFIG_FIELDS.includes('graphUrl'), true);
   assert.equal(CONFIG_DEFAULTS.graphUrl, '');
+});
+
+test('resolveKeeperConfig：空字串的數值欄位回退預設，不是被夾到最小值', function () {
+  // 設定頁把數字欄位清空會送空字串；Number('') === 0，若直接進界線夾取就會變成
+  // 「最小值」——scanMinutes 變 30 秒一輪、rebuildTimeoutSeconds 變 30 秒必殺。
+  const blank = resolveKeeperConfig({ scanMinutes: '', rebuildTimeoutSeconds: '', debounceMs: '', nice: '', maxLogEntries: '' });
+  assert.equal(blank.scanMs, CONFIG_DEFAULTS.scanMinutes * 60000);
+  assert.equal(blank.rebuildTimeoutMs, CONFIG_DEFAULTS.rebuildTimeoutSeconds * 1000);
+  assert.equal(blank.debounceMs, CONFIG_DEFAULTS.debounceMs);
+  assert.equal(blank.nice, CONFIG_DEFAULTS.nice);
+  assert.equal(blank.maxLogEntries, CONFIG_DEFAULTS.maxLogEntries);
+
+  assert.equal(readConfigValues({ nice: '' }).nice, CONFIG_DEFAULTS.nice, '數值欄位的空字串在 readConfigValues 就回退');
+  assert.equal(readConfigValues({ cliPath: '' }).cliPath, '', '字串欄位仍保留「空字串＝內建清單」的語意');
+  assert.equal(readConfigValues({ rebuildCooldownSeconds: '' }).rebuildCooldownSeconds, CONFIG_DEFAULTS.rebuildCooldownSeconds);
+});
+
+test('resolveKeeperConfig：rebuildCooldownSeconds 預設 45 秒，界線 0–3600', function () {
+  assert.equal(CONFIG_DEFAULTS.rebuildCooldownSeconds, 45);
+  assert.equal(CONFIG_FIELDS.includes('rebuildCooldownSeconds'), true);
+  assert.equal(resolveKeeperConfig({}).rebuildCooldownMs, 45000);
+  assert.equal(resolveKeeperConfig({ rebuildCooldownSeconds: 0 }).rebuildCooldownMs, 0, '0＝關閉冷卻');
+  assert.equal(resolveKeeperConfig({ rebuildCooldownSeconds: 999999 }).rebuildCooldownMs, 3600 * 1000);
+  assert.equal(resolveKeeperConfig({ rebuildCooldownSeconds: -5 }).rebuildCooldownMs, 0);
+  assert.equal(resolveKeeperConfig({ rebuildCooldownSeconds: 'x' }).rebuildCooldownMs, 45000);
+});
+
+test('resolveKeeperConfig：graphUrl 不是 http(s) 時回空字串並標記 graphUrlInvalid', function () {
+  const bad = resolveKeeperConfig({ graphUrl: 'htp://127.0.0.1:9749' });
+  assert.equal(bad.graphUrl, '', '非法覆寫退回推導，而不是讓所有圖譜連結消失');
+  assert.equal(bad.graphUrlInvalid, true);
+
+  assert.equal(resolveKeeperConfig({ graphUrl: 'ftp://cbm/graph' }).graphUrlInvalid, true);
+  assert.equal(resolveKeeperConfig({ graphUrl: 'https://cbm.example.com/graph/' }).graphUrlInvalid, false);
+  assert.equal(resolveKeeperConfig({}).graphUrlInvalid, false, '沒填不算非法');
+});
+
+test('unknownConfigKeys：列出不在 CONFIG_FIELDS 的鍵', function () {
+  assert.deepEqual(unknownConfigKeys({ scanMinutes: 5, scamMinutes: 9, mode: 'full' }), ['scamMinutes']);
+  assert.deepEqual(unknownConfigKeys(undefined), []);
+  assert.deepEqual(unknownConfigKeys({ scanMs: 300000, extensions: ['ts'] }), ['scanMs'], '`extensions` 是已知鍵（形狀不同），`scanMs` 才是未知');
 });
