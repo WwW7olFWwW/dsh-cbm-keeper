@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-05
+
+### Changed
+
+- **專案更名為 `dsh-codebase-watcher`**（原 `dsh-cbm-keeper`）。**破壞性變更**：bundle patch 的 row id
+  （`cbm-keeper` → `codebase-watcher`）、REST 路由前綴（`/api/cbm-keeper` → `/api/codebase-watcher`）、
+  狀態目錄（`~/.dsh/cbm-keeper` → `~/.dsh/codebase-watcher`）與 npm 套件名一併更換。既有安裝請改用新
+  套件名（見 README 的安裝一節）；狀態目錄換名後會在第一次掃描時重新建立，想保留歷史就先自行改名。
+- 對外文檔移除本機調試殘留（精確時間戳、PID、「在 live 生效」這類一次性敘述、樣本倉庫的提交 sha），
+  長期技術事實（例如 `link:` 安裝改動 `lib/` 後必須重啟才換代）改寫為通用表述保留。
+
 ### Added
 
 - **圖譜 UI 連結**：卡片標題列的「開啟圖譜」與每個專案列的「圖譜」，直達 CBM 自帶的 HTTP 圖譜介面（專案列用 `?project=<name>&tab=graph` 深連結）。三態如實呈現：`ui_enabled=false` 時只顯示 `--ui=true` 的提示、探測不到時標明「UI 未回應」、可連才給連結；本插件不改上游的 `ui_enabled`。
