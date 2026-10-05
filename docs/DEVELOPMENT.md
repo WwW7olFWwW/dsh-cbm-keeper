@@ -54,3 +54,25 @@ systemctl --user restart dsh-web
 用同一組指令重跑複現；與主機無關的部分（例如 `profilePackageRoots()` 的解析順序）在單元測試裡也
 有對應案例。**改動 `lib/` 之後仍必須重啟 `dsh web` 才會換代**：ESM 模組快取仍供應舊的模組
 世代，重新 apply 只會重跑舊程式碼。
+
+## 為什麼 `Config` 可能是 undefined
+
+**症狀**：設定頁與 `POST /config` 回 `No configurable plugin entry`，官方探針
+（`cordis_inspect_query`，provider `Config`、method `listConfigs`）對 entry `codebase-watcher`
+回 `status: absent`。插件本身照常運作，只是該 entry 不再「可配置」。
+
+原因是兩個陷阱疊在一起：
+
+- 本插件以 `link:` 安裝時 `import.meta.url` 指向這個目錄，從這裡往上走的 `node_modules` 鏈
+  **到不了** profile 的 `node_modules`。
+- `DSH_PROFILE_DIR` 只由 `dsh-shell-env` 注入**每一次模型 shell 呼叫的子行程**，載入插件的
+  宿主行程裡並沒有它——實測 `dsh web` 的 `/proc/<pid>/environ` 完全沒有 `DSH_*`。
+
+**做法**：`lib/config.js` 的解析根順序是「環境有給的 profile → 自己 → cwd → **DSH home 底下的
+`profiles/*`（把真的 link 了本插件的那個排前面）**」，見 `schemasteryRequireRoots()` 與
+`profilePackageRoots()`。全部落空時 `Config` 會匯出成 `undefined`。
+
+設定服務只要求 `Config` 有 `toJSON` 且欄位是 volatile，而 volatile 參照用
+`Symbol.for('cosmokit.volatile.write')` 跨副本識別，因此用 profile 那一份編出來的 schema
+在 harness 自己的設定服務上完全可用（逐條驗過三道門：schema 可列舉、欄位可寫入、
+寫入後設定服務讀得到新值）。

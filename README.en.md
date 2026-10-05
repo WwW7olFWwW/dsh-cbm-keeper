@@ -2,9 +2,15 @@
 
 English | [中文](README.md)
 
-Hooking [Codebase Memory](https://github.com/DeusData/codebase-memory-mcp) (CBM) into [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) with a single MCP row **works for queries but leaves the graph silently stale**: the MCP `cwd` is a profile-level constant (so CBM's watching and auto-index land on the wrong tree), CBM's built-in watcher produces no observable rebuild, and the MCP tool `index_repository` has a 60-second cap. In one measured case the graph was 33 hours / 37 commits / 988 files behind while everyone believed it was current.
+Wiring [Codebase Memory](https://github.com/DeusData/codebase-memory-mcp) (CBM) into [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) with a single MCP row works fine for queries; what breaks is that the graph goes stale silently. The MCP `cwd` is a profile-level constant, so CBM's watching and auto-index land on the wrong tree. CBM's built-in watcher produces no observable rebuild, and the MCP tool `index_repository` has a 60-second cap. In one measured case the graph was 33 hours, 37 commits and 988 files behind while everyone believed it was current.
 
-`dsh-codebase-watcher` gets **staleness detection, conditional rebuild and observability** right — **without modifying CBM, without modifying DSH, and without a systemd timer**.
+`dsh-codebase-watcher` measures how far the graph is behind, calls CBM's CLI to rebuild only when it has to, and shows the result on the settings card. Beyond installing the plugin there is nothing to change in CBM or DSH, and no systemd timer to set up.
+
+## Requirements
+
+- **Codebase Memory**: the `codebase-memory-mcp` CLI, tested on 0.11.0. Other versions still work and turn into a card warning. When the CLI is not on `PATH` the card shows "（未解析）" [unresolved]; set `cliPath` on the settings page.
+- **Node.js ≥ 20** and **DSH ≥ 0.2.0-rc.2**, both declared in this plugin's `engines`.
+- **The project must be a git worktree**: staleness comes from comparing `git rev-parse HEAD` against the graph's `Branch.head_sha`.
 
 ## Installation
 
@@ -12,34 +18,42 @@ Hooking [Codebase Memory](https://github.com/DeusData/codebase-memory-mcp) (CBM)
 dsh plugin --profile web add github:WwW7olFWwW/dsh-codebase-watcher
 ```
 
-No restart needed; the card appears under Settings → "CBM 圖譜" [CBM Graph] (reload the page once if it does not — **editing `lib/` is the exception and needs a `dsh web` restart**). While you are there, turn off the upstream unconditional full rebuild (~61 s / 658 MB burnt on every session start):
+A "CBM 圖譜" [CBM Graph] card then appears under Settings; reload the page once if it does not. While you are there, turn off the upstream unconditional full rebuild. It burns about 61 s / 658 MB at every session start:
 
 ```sh
 codebase-memory-mcp config set auto_index false
 ```
 
+## First run
+
+The first scan adopts every project Codebase Memory has already indexed, and queues the stale ones for rebuild. Rebuilds run one at a time (global concurrency 1), so the first batch can take a while.
+
+To watch before you let it act, set `autoRebuild` to `false`, or narrow the set with `includeProjects`.
+
 ## Features
 
-- **Staleness detection**: the graph's `Branch.head_sha` vs `git rev-parse HEAD`, giving an exact `behindBy`; falls back to `indexed_at` / DB mtime when there is no `Branch` node. Insufficient evidence reports "cannot be determined" instead of pretending to be fresh.
-- **Conditional rebuild**: only stale projects are enqueued, global concurrency 1; when the graph matches HEAD, `POST /rebuild` returns `queued: 0`.
-- **Bypasses the MCP 60-second cap**: rebuilds run as a child process, `codebase-memory-mcp cli index_repository`.
-- **Catches up on save**: per-project file watching with debounce; falls back to `node:fs.watch` without chokidar.
-- **Observability and control**: the settings card and the REST control plane share one source, so every card action can be hit with curl.
-- **One-click jump to the graph**: the card and every project row link into the CBM graph UI (`?project=` deep-links straight to one project); when the UI is off or unreachable it says so instead of offering a button that breaks.
+- **Staleness detection**: the graph's `Branch.head_sha` against `git rev-parse HEAD`, giving an exact `behindBy`. With no `Branch` node it falls back to `indexed_at` and the database mtime; when the evidence is insufficient it reports "cannot be determined".
+- **Conditional rebuild**: only stale projects are queued. When the graph already matches HEAD, `POST /rebuild` returns `queued: 0` and no indexing work happens.
+
+Rebuilds run as a child process, `codebase-memory-mcp cli index_repository`, which sidesteps the 60-second cap on the MCP tool. Every adopted project gets file watching with debounce, so a save is picked up on its own; without chokidar it falls back to `node:fs.watch`.
+
+The settings card and the REST control plane share one source, so every card action can also be hit with curl. The card header and each project row link into the CBM graph UI (`?project=` deep-links to a single project); when the UI is off or unreachable the link says why instead of breaking.
 
 ## Compatibility
 
 | Plugin | DSH | Codebase Memory |
 |---|---|---|
-| `0.1.x` | `>=0.2.0-rc.2` (tested on 0.2.0-rc.2; declared via `engines.dsh`) | `codebase-memory-mcp@0.11.0` (versions outside the list turn into a card warning) |
+| `0.2.x` | `>=0.2.0-rc.2` (tested on 0.2.0-rc.2; declared via `engines.dsh`) | `codebase-memory-mcp@0.11.0` (versions outside the list turn into a card warning) |
 
 ## Configuration
 
-15 volatile fields and 7 REST routes: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
+17 tunable fields and 8 REST routes: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md). Field changes take effect immediately, no restart.
+
+State lives in `~/.dsh/codebase-watcher/state.json` and the log in `~/.dsh/codebase-watcher/keeper.log`. Read-only query: `curl -s http://127.0.0.1:3080/api/codebase-watcher/state`.
 
 ## Known limitations
 
-chokidar is an optional dependency; projects rooted at the home directory are not supported for CBM watching (upstream security policy); the graph's structural claims cannot be used as evidence.
+chokidar is an optional dependency; without it the watcher falls back to `node:fs.watch`. Projects rooted at the home directory are not watched by CBM (upstream security policy). The graph's structural claims cannot be used as evidence.
 Everything else is in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md).
 
 ## Removal
@@ -47,15 +61,16 @@ Everything else is in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md).
 ```sh
 dsh plugin --profile web remove dsh-codebase-watcher
 rm -rf ~/.dsh/codebase-watcher
+rm -f ~/.dsh/profiles/web/node_modules/dsh-codebase-watcher
 ```
+
+The last line clears a known pnpm leftover for `link:` packages: the symlink stays in `node_modules` after the dependency is gone. Uninstalling does not delete the state directory; remove it yourself.
 
 ## Development
 
 ```sh
 node --test test/*.test.js   # 115 unit tests, no real index needed
 ```
-
-After changing `lib/`, run `systemctl --user restart dsh-web` for it to take effect (the ESM module cache of a `link:` install is not hot-loaded).
 
 [Architecture](docs/ARCHITECTURE.md) ｜ [Verification status](docs/DEVELOPMENT.md) ｜ [Requirements](docs/REQUIREMENTS.md) ｜ [Contributing](CONTRIBUTING.md) ｜ [Changelog](CHANGELOG.md) ｜ [Issues](https://github.com/WwW7olFWwW/dsh-codebase-watcher/issues)
 
