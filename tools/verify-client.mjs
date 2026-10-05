@@ -307,7 +307,7 @@ function createFakeCtx() {
  * @returns {Promise<void>} 完成即結束；有失敗時以非零碼退出。
  */
 async function main() {
-  console.log('dsh-cbm-keeper 客戶端渲染驗證');
+  console.log('dsh-codebase-watcher 客戶端渲染驗證');
   console.log('  base   ' + BASE);
   console.log('  plugin ' + PLUGIN_ROOT);
 
@@ -329,7 +329,7 @@ async function main() {
 
   const checks = new Checks();
   checks.ok('模組以 __ModuleLoader__.load 註冊', captured !== undefined);
-  checks.ok('registration id 等於套件名', captured?.id === 'dsh-cbm-keeper', String(captured?.id));
+  checks.ok('registration id 等於套件名', captured?.id === 'dsh-codebase-watcher', String(captured?.id));
 
   const mini = createMiniReact();
   const exported = captured.factory(function require(id) {
@@ -343,11 +343,11 @@ async function main() {
   const { ctx, record } = createFakeCtx();
   exported.apply(ctx);
 
-  checks.ok('註冊了 locale 字典', record.dictionaries.length === 1 && record.dictionaries[0].ns === 'cbm-keeper');
+  checks.ok('註冊了 locale 字典', record.dictionaries.length === 1 && record.dictionaries[0].ns === 'codebase-watcher');
   checks.ok('注入 settings.section', record.injections.includes('settings.section'), record.injections.join(','));
   const registration = record.registrations[0];
   checks.ok('settings.section 註冊存在', registration !== undefined);
-  checks.ok('分區 id 為 cbm-keeper', registration?.options?.id === 'cbm-keeper', String(registration?.options?.id));
+  checks.ok('分區 id 為 codebase-watcher', registration?.options?.id === 'codebase-watcher', String(registration?.options?.id));
   checks.ok('分區 order 為數字', typeof registration?.options?.order === 'number', String(registration?.options?.order));
   checks.ok('分區 label 可解析為非空字串', typeof registration?.options?.label?.() === 'string' && registration.options.label().length > 0,
     String(registration?.options?.label?.()));
@@ -359,10 +359,10 @@ async function main() {
 
   const html = rendered.html;
 
-  // 逐值核對：這些字串只有在真的抓到 /api/cbm-keeper/state 的資料時才會出現。
+  // 逐值核對：這些字串只有在真的抓到 /api/codebase-watcher/state 的資料時才會出現。
   let live;
   try {
-    const response = await realFetch(new URL('/api/cbm-keeper/state?log=120', BASE));
+    const response = await realFetch(new URL('/api/codebase-watcher/state?log=120', BASE));
     live = await response.json();
   } catch (error) {
     checks.ok('取得執行中伺服器的真實狀態', false, error instanceof Error ? error.message : String(error));

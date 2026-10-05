@@ -4,7 +4,7 @@
 瀏覽器（設定 →「CBM 圖譜」）
    │  settings.section slot，純 fetch
    ▼
-/api/cbm-keeper/{state,log,check,rebuild,watchers,config}      ← Host 半邊（lib/routes.js）
+/api/codebase-watcher/{state,log,check,rebuild,watchers,config}      ← Host 半邊（lib/routes.js）
    ▼
 CbmKeeper 協調器（lib/keeper.js）
    ├── 掃描：list_projects → 依 realpath(root) 併入專案表（FR-1）

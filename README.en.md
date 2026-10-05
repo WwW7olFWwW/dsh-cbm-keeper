@@ -1,15 +1,15 @@
-# dsh-cbm-keeper [![CI](https://github.com/WwW7olFWwW/dsh-cbm-keeper/actions/workflows/ci.yml/badge.svg)](https://github.com/WwW7olFWwW/dsh-cbm-keeper/actions/workflows/ci.yml)
+# dsh-codebase-watcher [![CI](https://github.com/WwW7olFWwW/dsh-codebase-watcher/actions/workflows/ci.yml/badge.svg)](https://github.com/WwW7olFWwW/dsh-codebase-watcher/actions/workflows/ci.yml)
 
 English | [中文](README.md)
 
 Hooking [Codebase Memory](https://github.com/DeusData/codebase-memory-mcp) (CBM) into [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) with a single MCP row **works for queries but leaves the graph silently stale**: the MCP `cwd` is a profile-level constant (so CBM's watching and auto-index land on the wrong tree), CBM's built-in watcher produces no observable rebuild, and the MCP tool `index_repository` has a 60-second cap. In one measured case the graph was 33 hours / 37 commits / 988 files behind while everyone believed it was current.
 
-`dsh-cbm-keeper` gets **staleness detection, conditional rebuild and observability** right — **without modifying CBM, without modifying DSH, and without a systemd timer**.
+`dsh-codebase-watcher` gets **staleness detection, conditional rebuild and observability** right — **without modifying CBM, without modifying DSH, and without a systemd timer**.
 
 ## Installation
 
 ```sh
-dsh plugin --profile web add github:WwW7olFWwW/dsh-cbm-keeper
+dsh plugin --profile web add github:WwW7olFWwW/dsh-codebase-watcher
 ```
 
 No restart needed; the card appears under Settings → "CBM 圖譜" [CBM Graph] (reload the page once if it does not — **editing `lib/` is the exception and needs a `dsh web` restart**). While you are there, turn off the upstream unconditional full rebuild (~61 s / 658 MB burnt on every session start):
@@ -45,8 +45,8 @@ Everything else is in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md).
 ## Removal
 
 ```sh
-dsh plugin --profile web remove dsh-cbm-keeper
-rm -rf ~/.dsh/cbm-keeper
+dsh plugin --profile web remove dsh-codebase-watcher
+rm -rf ~/.dsh/codebase-watcher
 ```
 
 ## Development
@@ -57,7 +57,7 @@ node --test test/*.test.js   # 115 unit tests, no real index needed
 
 After changing `lib/`, run `systemctl --user restart dsh-web` for it to take effect (the ESM module cache of a `link:` install is not hot-loaded).
 
-[Architecture](docs/ARCHITECTURE.md) ｜ [Verification status](docs/DEVELOPMENT.md) ｜ [Requirements](docs/REQUIREMENTS.md) ｜ [Contributing](CONTRIBUTING.md) ｜ [Changelog](CHANGELOG.md) ｜ [Issues](https://github.com/WwW7olFWwW/dsh-cbm-keeper/issues)
+[Architecture](docs/ARCHITECTURE.md) ｜ [Verification status](docs/DEVELOPMENT.md) ｜ [Requirements](docs/REQUIREMENTS.md) ｜ [Contributing](CONTRIBUTING.md) ｜ [Changelog](CHANGELOG.md) ｜ [Issues](https://github.com/WwW7olFWwW/dsh-codebase-watcher/issues)
 
 ## License
 

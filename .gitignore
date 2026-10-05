@@ -5,9 +5,9 @@ package-lock.json
 pnpm-lock.yaml
 yarn.lock
 
-# 執行期狀態（預設落在 ~/.dsh/cbm-keeper；若改到專案內請勿提交）
+# 執行期狀態（預設落在 ~/.dsh/codebase-watcher；若改到專案內請勿提交）
 .dsh/
-cbm-keeper/
+codebase-watcher/
 
 # 日誌與打包產物
 *.log

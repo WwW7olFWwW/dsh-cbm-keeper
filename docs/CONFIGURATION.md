@@ -45,13 +45,13 @@ CBM 自帶一個 HTTP 圖譜介面（`codebase-memory-mcp --ui=true`，預設埠
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| `GET` | `/api/cbm-keeper/state?log=100` | 全域狀態 + 專案表 + 不可靠宣告說明 + 最近日誌 |
-| `GET` | `/api/cbm-keeper/log?limit=200` | 只要日誌 |
-| `POST` | `/api/cbm-keeper/check` | `{}`＝整批重掃；`{"id":"<root>"}`＝只檢查一個 |
-| `POST` | `/api/cbm-keeper/rebuild` | `{"id":…}` / `{"staleOnly":true}` / `{"mode":"fast"}` / `{"force":true}` |
-| `POST` | `/api/cbm-keeper/watchers` | `{"action":"pause"\|"resume", "id"?:…}` |
-| `GET` | `/api/cbm-keeper/config` | 讀取目前設定 |
-| `POST` | `/api/cbm-keeper/config` | 寫入設定（欄位 → 新值；`null` 表示回退預設） |
+| `GET` | `/api/codebase-watcher/state?log=100` | 全域狀態 + 專案表 + 不可靠宣告說明 + 最近日誌 |
+| `GET` | `/api/codebase-watcher/log?limit=200` | 只要日誌 |
+| `POST` | `/api/codebase-watcher/check` | `{}`＝整批重掃；`{"id":"<root>"}`＝只檢查一個 |
+| `POST` | `/api/codebase-watcher/rebuild` | `{"id":…}` / `{"staleOnly":true}` / `{"mode":"fast"}` / `{"force":true}` |
+| `POST` | `/api/codebase-watcher/watchers` | `{"action":"pause"\|"resume", "id"?:…}` |
+| `GET` | `/api/codebase-watcher/config` | 讀取目前設定 |
+| `POST` | `/api/codebase-watcher/config` | 寫入設定（欄位 → 新值；`null` 表示回退預設） |
 
 `rebuild` 預設**不帶 force**：圖譜 HEAD 與工作樹一致時回 `queued: 0`，不產生任何索引工作
 （FR-3 的驗收條件）。要無條件重跑請帶 `force: true`。

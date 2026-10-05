@@ -49,7 +49,7 @@ async function readCalls(callsFile) {
 async function makeKeeper(t, options) {
   const projects = options.projects;
   const sha = options.sha ?? {};
-  const dir = await makeTempDir(t, 'cbm-keeper');
+  const dir = await makeTempDir(t, 'codebase-watcher');
   const home = join(dir, 'home');
   const fake = await installFakeCbm(dir, Object.assign({
     projects,

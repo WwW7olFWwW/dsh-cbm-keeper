@@ -5,8 +5,8 @@
 | **版本** | v0.1（實作前的需求草案；實作現況與驗證結果見 [`../README.md`](../README.md)） |
 | **日期** | 2026-10-04 |
 | **性質** | 需求規格。回答「為什麼要做、要做什麼、驗收怎麼算」；實作步驟另見計畫 |
-| **依據** | 2026-10-04 在 Fedora 主機上對 `codebase-memory-mcp@0.11.0` + DSH（`dsh-web.service`，0.2.0-rc.2 線）的**逐值實測**；所有問題均附可重跑指令（附錄 A） |
-| **代號** | `dsh-cbm-keeper` |
+| **依據** | 2026-10-04 對 `codebase-memory-mcp@0.11.0` + DSH 0.2（0.2.0-rc.2 線）的**逐值實測**；所有問題均附可重跑指令（附錄 A） |
+| **代號** | `dsh-codebase-watcher` |
 
 ---
 
@@ -19,7 +19,7 @@ DSH 目前用**一行手動 MCP row** 接上 Codebase Memory（CBM）。實測�
 2. **CBM 內建的 watcher 即使註冊成功也不會產生可觀測的重建**（兩次對照探針，0 次索引工作）；
 3. **MCP 工具 `index_repository` 有 60 秒上限**，而本專案索引需 60,980 ms ⇒ 每次都恰好被 supervisor 殺掉、白跑。
 
-當時查過的外部現成方案不足以覆蓋本機情境：市集上的 `dsh-codebase-memory`（andyfan1094）在
+當時查過的外部現成方案不足以覆蓋本專案的需求情境：市集上的 `dsh-codebase-memory`（andyfan1094）在
 2026-08-26 的狀態是最後提交 2026-08-26、最後發佈 v0.2.1（2026-08-22，當時已 39 天無更新），
 且其 Linux 路徑解析在 Fedora 上必然失敗（見 P14）。以上是當日觀察，上游之後若有更新請以現況為準；
 本插件與該專案沒有依賴或衍生關係。
@@ -118,17 +118,17 @@ index.supervisor.containment_failed outcome=killed
 
 `dsh-codebase-memory`（andyfan1094，v0.2.1，MIT）逐值檢查：
 - 架構正確：watcher **不持有 MCP 連線**、直接 shell out CLI、`autoAttach` 對所有已知專案自動掛 watcher
-- **但** `src/cli-bridge.mjs` 的 `resolveExecutable()` 在非 Windows 只找 `/usr/local/lib/node_modules/…` 與 `/usr/lib/node_modules/…`；本機 CLI 在 `~/.local/bin/` ⇒ 回退第一候選 ⇒ **必然 ENOENT**
+- **但** `src/cli-bridge.mjs` 的 `resolveExecutable()` 在非 Windows 只找 `/usr/local/lib/node_modules/…` 與 `/usr/lib/node_modules/…`；而該環境的 CLI 裝在 `~/.local/bin/` ⇒ 回退第一候選 ⇒ **必然 ENOENT**
 - `src/index.mjs:43` 是 `createCliBridge({})`（不傳 executable），設定 schema 無 `cliPath`／`executable` ⇒ **無法用設定覆寫**
 - bundle id 就叫 `mcp-codebase-memory`，**與本 profile 的手動 row 撞名**
-- 文件綁 `codebase-memory-mcp@0.10.8`（Windows AMD64 發行件）；本機 0.11.0
+- 文件綁 `codebase-memory-mcp@0.10.8`（Windows AMD64 發行件）；實測環境 0.11.0
 - **最後提交 2026-08-26、最後發佈 2026-08-22 ⇒ 已 39 天無更新**
 
 **對照**：`troytse/dsh-plugin-codegraph-project` 最後提交 2026-09-30（4 天前，活躍），且它示範了「按 session workspace 解析專案、每專案一個 MCP」的可行範式——但後端是 CodeGraph，不是 CBM。
 
 ### P15 — 版本漂移無護欄
 
-本機 CBM 0.11.0；生態插件綁 0.10.8。沒有「啟動時檢查版本並警告」的機制。
+實測環境 CBM 0.11.0；生態插件綁 0.10.8。沒有「啟動時檢查版本並警告」的機制。
 
 ### P16 — gitignore 內容不入圖（預期行為，但要說清楚）
 
@@ -208,7 +208,7 @@ index.supervisor.containment_failed outcome=killed
 
 | 介面 | 內容 |
 |---|---|
-| **DSH 插件** | Cordis bundle（`package.json` 的 `dsh.bundle.patch`）；`settings.section` slot 放觀測卡片；`webServer` 註冊 REST 路由；生命週期用 `ctx.effect` 收尾（不可用模組級 WeakSet 守門——本機已有該踩坑紀錄） |
+| **DSH 插件** | Cordis bundle（`package.json` 的 `dsh.bundle.patch`）；`settings.section` slot 放觀測卡片；`webServer` 註冊 REST 路由；生命週期用 `ctx.effect` 收尾（不可用模組級 WeakSet 守門——實測時踩過這個坑） |
 | **CBM CLI** | `codebase-memory-mcp cli [--quiet] [--json] <tool> [--flag value]`；本專案實際會用到：`list_projects`、`index_status`、`query_graph`（取 `Branch.head_sha`）、`index_repository` |
 | **狀態檔** | `~/.dsh/<plugin-id>/state.json`（每個專案的 watcher 意圖、上次結果、上次錯誤），原子寫入 |
 | **輔助訊號** | `~/.cache/codebase-memory-mcp/<project>.db` 的 mtime（僅作旁證，不作主判據） |
@@ -242,7 +242,7 @@ index.supervisor.containment_failed outcome=killed
 | R6 | 與 CBM 內建 watcher/auto_index 併存會重複重建 | 安裝指引明確要求 `auto_index=false`；插件啟動時偵測並警告 |
 | R7 | 索引成本（61s／658 MB／峰值 2.8 GB） | FR-3 條件式重建 ＋ FR-14 併發上限 1 ＋ nice |
 | **U1** | **DSH 插件 API 能否取得「session 的 workspace 目錄」**（FR-6/FR-7 若要走 per-session 路線則必需；`dsh-plugin-codegraph-project` 的存在暗示可以） | **M0 必須先驗**；若不可得，退回「全域掃描 `list_projects`」路線（FR-7 已涵蓋） |
-| **U2** | 插件 API 版本相容（本機 DSH 0.2.0-rc.2） | M0 驗證 `settings.section` 與 `webServer` 是否如文件可用 |
+| **U2** | 插件 API 版本相容（實測 DSH 0.2.0-rc.2） | M0 驗證 `settings.section` 與 `webServer` 是否如文件可用 |
 | **U3** | 是否要把 FR-6 watcher 做成可選（純輪詢比 chokidar 更省事） | M2 依 R4 實測決定 |
 
 ---

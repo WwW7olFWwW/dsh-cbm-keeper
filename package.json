@@ -1,5 +1,5 @@
 {
-  "name": "dsh-cbm-keeper",
+  "name": "dsh-codebase-watcher",
   "version": "0.1.0",
   "type": "module",
   "description": "DSH × Codebase Memory 圖譜保鮮插件：讓 CBM 知識圖譜自動跟上各專案的 git HEAD（落後偵測、條件式 CLI 重建、每專案監看、設定頁觀測卡片與 REST 控制面）。",
@@ -58,11 +58,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/WwW7olFWwW/dsh-cbm-keeper.git"
+    "url": "git+https://github.com/WwW7olFWwW/dsh-codebase-watcher.git"
   },
-  "homepage": "https://github.com/WwW7olFWwW/dsh-cbm-keeper#readme",
+  "homepage": "https://github.com/WwW7olFWwW/dsh-codebase-watcher#readme",
   "bugs": {
-    "url": "https://github.com/WwW7olFWwW/dsh-cbm-keeper/issues"
+    "url": "https://github.com/WwW7olFWwW/dsh-codebase-watcher/issues"
   },
   "publishConfig": {
     "access": "public"

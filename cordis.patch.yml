@@ -1,20 +1,20 @@
-# dsh-cbm-keeper bundle patch — inserts the dual-face plugin row into the
+# dsh-codebase-watcher bundle patch — inserts the dual-face plugin row into the
 # profile roster. Applied as a profile bundle layer via the `dsh.bundle.patch`
 # manifest field.
 #
 # The row is a bare plugin by package name: the node half (exports ".")
 # registers the REST control plane, the per-project watchers and the rebuild
 # queue in the host process; the `dsh.client` declaration in package.json makes
-# the browser half (exports "./client", served at /plugins/cbm-keeper/client.js)
+# the browser half (exports "./client", served at /plugins/codebase-watcher/client.js)
 # load in the web GUI and register the observation card under
 # Settings →「CBM 圖譜」.
 #
-# The row id is deliberately `cbm-keeper`, which collides with no existing row
+# The row id is deliberately `codebase-watcher`, which collides with no existing row
 # (NFR-5): the manual MCP row for the Codebase Memory server is `codebase_memory`
 # inside @deepseek-ai/dsh-mcp-client entries, a different entry id entirely.
 - insert:
-    - id: cbm-keeper
-      name: 'dsh-cbm-keeper'
+    - id: codebase-watcher
+      name: 'dsh-codebase-watcher'
       config:
         enabled: true
         mode: full

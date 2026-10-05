@@ -97,7 +97,7 @@ async function createReadOnlyKeeper(home) {
  */
 async function main() {
   const checks = new Checks();
-  const home = await mkdtemp(join(tmpdir(), 'cbm-keeper-verify-'));
+  const home = await mkdtemp(join(tmpdir(), 'codebase-watcher-verify-'));
   const { keeper, log } = await createReadOnlyKeeper(home);
 
   try {
@@ -116,7 +116,7 @@ async function main() {
     checks.ok('納管了至少兩個專案', projects.length >= 2, String(projects.length));
 
     const names = projects.map(function (project) { return project.name; });
-    checks.ok('沒有殘留已刪除的 cbm-keeper-e2e', !names.includes('cbm-keeper-e2e'), names.join(','));
+    checks.ok('沒有殘留已刪除的 codebase-watcher-e2e', !names.includes('codebase-watcher-e2e'), names.join(','));
 
     // 專案名不寫死：這支腳本要在別人的機器上也能跑，樣本一律從真實清單裡挑。
     // 想指定某個專案就 `node tools/verify-keeper.mjs <專案名>`。
@@ -160,7 +160,7 @@ async function main() {
     }
 
     console.log('階段 B — 上游刪除專案時的收斂（替換 CbmClient）');
-    const fakeRoot = '/tmp/cbm-keeper-verify-ghost';
+    const fakeRoot = '/tmp/codebase-watcher-verify-ghost';
     keeper.cbm = {
       nice: 0,
       listProjects: async function () {
@@ -198,7 +198,7 @@ async function main() {
     checks.ok('孤兒收斂有寫進日誌', orphanEvents.length === 1, String(orphanEvents.length));
 
     console.log('階段 C — 未納管的專案不得被排入重建');
-    const blocked = keeper.enqueue('/tmp/cbm-keeper-verify-ghost', 'verify');
+    const blocked = keeper.enqueue('/tmp/codebase-watcher-verify-ghost', 'verify');
     checks.ok('孤兒不得被排入重建', blocked === false, String(blocked));
     checks.ok('佇列因此保持空的', keeper.queue.length === 0, String(keeper.queue.length));
   } finally {

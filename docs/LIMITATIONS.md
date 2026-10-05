@@ -15,7 +15,7 @@
 - **上游消失的專案會留在清單上，標成「孤兒」**（`selected=false`、`orphaned=true`、監看停止），
   而不是被靜默移除——這樣你才看得到「它不見了」。孤兒只存在於記憶體，重啟即消失。
 - **`stop()` 是真正的 join**：卸載時它會等正在跑的重建收尾（先 abort 子行程，上限 15 秒），
-  所以 `remove_bundle` 之後立刻 `rm -rf ~/.dsh/cbm-keeper` 不會被遲到的落盤還原。
+  所以 `remove_bundle` 之後立刻 `rm -rf ~/.dsh/codebase-watcher` 不會被遲到的落盤還原。
   中止的重建會留下一筆 `rebuild.abandoned` 日誌，狀態檔刻意停在 `running`／`queued`，
   讓下次啟動的 `recoverIntent()` 把它重新排入。
 - **`@deepseek-ai/schemastery` 的解析路徑（兩個陷阱疊在一起）**：本插件以 `link:` 安裝時
@@ -29,15 +29,15 @@
   （`cordis_inspect_query`，provider `Config`、`method listConfigs`）回 `status: absent` 即是此症。
   設定服務只要求 `Config` 有 `toJSON` 且欄位是 volatile，而 volatile 參照用
   `Symbol.for('cosmokit.volatile.write')` 跨副本識別，因此用 profile 那一份編出來的 schema
-  在 harness 自己的設定服務上完全可用（本機逐條驗過三道門：schema 可列舉、欄位可寫入、
+  在 harness 自己的設定服務上完全可用（逐條驗過三道門：schema 可列舉、欄位可寫入、
   寫入後設定服務讀得到新值）。
 
 ## 移除
 
 ```bash
-dsh plugin --profile web remove dsh-cbm-keeper
-rm -rf ~/.dsh/cbm-keeper
-rm -f ~/.dsh/profiles/web/node_modules/dsh-cbm-keeper   # 若殘留（見下）
+dsh plugin --profile web remove dsh-codebase-watcher
+rm -rf ~/.dsh/codebase-watcher
+rm -f ~/.dsh/profiles/web/node_modules/dsh-codebase-watcher   # 若殘留（見下）
 ```
 
 第一行移除 bundle 註冊與套件相依；第二行清掉插件自己的狀態檔與日誌；第三行處理

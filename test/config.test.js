@@ -33,12 +33,12 @@ test('schemastery 的解析根：環境有給 profile 時排第一，且順序�
   const roots = schemasteryRequireRoots(
     { DSH_PROFILE_DIR: '/p/web', HOME: ISOLATED_HOME },
     '/work',
-    'file:///work/dsh-cbm-plugin/lib/config.js',
+    'file:///work/dsh-codebase-watcher/lib/config.js',
   );
   // 插件以 link: 安裝時 import.meta.url 指向工作區，從那裡往上是找不到
   // @deepseek-ai/schemastery 的；環境有給 profile 目錄時必須排第一。
   assert.equal(roots[0], '/p/web/package.json');
-  assert.equal(roots[1], 'file:///work/dsh-cbm-plugin/lib/config.js');
+  assert.equal(roots[1], 'file:///work/dsh-codebase-watcher/lib/config.js');
   assert.equal(roots[2], '/work/package.json');
   assert.equal(roots.length, 3, '孤立的家目錄下不該再長出 profile 解析根');
 
@@ -50,12 +50,12 @@ test('schemastery 的解析根：環境有給 profile 時排第一，且順序�
 });
 
 test('profilePackageRoots：把真的 link 了本插件的 profile 排在前面', function () {
-  const home = mkdtempSync(join(tmpdir(), 'cbm-keeper-home-'));
+  const home = mkdtempSync(join(tmpdir(), 'codebase-watcher-home-'));
   try {
     // web 把本插件 link 進來；headless 沒有。字母序 headless 在前，排序必須把它壓後。
     mkdirSync(join(home, 'profiles', 'headless'), { recursive: true });
     mkdirSync(join(home, 'profiles', 'web', 'node_modules'), { recursive: true });
-    symlinkSync(PLUGIN_DIR, join(home, 'profiles', 'web', 'node_modules', 'dsh-cbm-keeper'), 'dir');
+    symlinkSync(PLUGIN_DIR, join(home, 'profiles', 'web', 'node_modules', 'dsh-codebase-watcher'), 'dir');
 
     const roots = profilePackageRoots(
       { DSH_HOME: home },
@@ -80,7 +80,7 @@ test('resolveSchemastery：宿主行程條件下（process.env 沒有 DSH_PROFIL
   //
   // 夾具自備一個假的 DSH home 與假的 @deepseek-ai/schemastery，所以這條在任何機器上
   // 都可重現（CI 上沒有安裝 DSH 也照樣跑）；真機路徑由下一條測試負責。
-  const home = mkdtempSync(join(tmpdir(), 'cbm-keeper-host-'));
+  const home = mkdtempSync(join(tmpdir(), 'codebase-watcher-host-'));
   try {
     const fixture = join(home, 'profiles', 'web', 'node_modules', '@deepseek-ai', 'schemastery');
     mkdirSync(fixture, { recursive: true });
@@ -90,10 +90,10 @@ test('resolveSchemastery：宿主行程條件下（process.env 沒有 DSH_PROFIL
     );
     writeFileSync(
       join(fixture, 'index.js'),
-      "module.exports = { fixtureMarker: 'dsh-cbm-keeper-fixture', object: function object() { return {}; } };\n",
+      "module.exports = { fixtureMarker: 'dsh-codebase-watcher-fixture', object: function object() { return {}; } };\n",
     );
     // web 把本插件 link 進來，排序上必須排在沒有 link 的 profile 前面（見上一條測試）。
-    symlinkSync(PLUGIN_DIR, join(home, 'profiles', 'web', 'node_modules', 'dsh-cbm-keeper'), 'dir');
+    symlinkSync(PLUGIN_DIR, join(home, 'profiles', 'web', 'node_modules', 'dsh-codebase-watcher'), 'dir');
 
     const hostLike = { ...process.env, HOME: home, DSH_HOME: home };
     delete hostLike.DSH_PROFILE_DIR;
@@ -109,7 +109,7 @@ test('resolveSchemastery：宿主行程條件下（process.env 沒有 DSH_PROFIL
     const z = resolveSchemastery(roots);
     assert.notEqual(z, null, '宿主條件下必須仍解析得到 @deepseek-ai/schemastery');
     assert.equal(typeof z.object, 'function');
-    assert.equal(z.fixtureMarker, 'dsh-cbm-keeper-fixture', '必須命中 profile 的解析根，而不是別的來源');
+    assert.equal(z.fixtureMarker, 'dsh-codebase-watcher-fixture', '必須命中 profile 的解析根，而不是別的來源');
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
