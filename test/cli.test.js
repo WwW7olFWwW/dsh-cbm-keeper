@@ -147,6 +147,22 @@ test('parseJsonEnvelope：isError 且內文是 JSON 錯誤物件時取出 error 
   );
 });
 
+test('parseJsonEnvelope：CBM 的 {status,hint} 中止信封要攤平成一句可讀的錯誤', function () {
+  // 實測（keeper.log 有 8 筆 rebuild.failed）CBM 的索引中止信封只有 status 與 hint，
+  // 沒有 error 欄位；舊版只認 {error}，於是整段 JSON 被原樣印到卡片上。
+  const inner = JSON.stringify({
+    project: 'sample-repo',
+    status: 'aborted_previous_preserved',
+    hint: 'Indexing aborted before publication; the previous index is intact and still serving.',
+  });
+  const parsed = parseJsonEnvelope(JSON.stringify({ isError: true, content: [{ type: 'text', text: inner }] }));
+
+  assert.equal(parsed.ok, false);
+  assert.match(parsed.error, /aborted_previous_preserved/);
+  assert.match(parsed.error, /Indexing aborted before publication/);
+  assert.doesNotMatch(parsed.error, /\{"project"/, '不得把整段 JSON 原樣當訊息');
+});
+
 test('parseJsonEnvelope：isError 但內文不是 JSON 時取第一行', function () {
   const parsed = parseJsonEnvelope(JSON.stringify({
     content: [{ type: 'text', text: 'index supervisor failed\nsecond line' }],

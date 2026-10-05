@@ -61,6 +61,27 @@ async function makeWatcher(options) {
   });
 }
 
+test('H3：chokidar 的執行期錯誤會讓狀態變成 failed，並留下 lastError', async function (t) {
+  const dir = await makeTempDir(t, 'cbm-watch-error');
+  const log = makeFakeLog();
+  const fake = makeFakeChokidar();
+  const watcher = await makeWatcher({ root: dir, log, loadChokidar: fake.load });
+  try {
+    assert.equal(watcher.backend, 'chokidar');
+    assert.equal(watcher.status(), 'watching');
+
+    // inotify 用盡（ENOSPC）之類的錯誤是非同步送進來的：以前只寫一行 warn，
+    // 狀態仍是 watching，卡片繼續說「監看中」，但存檔已經追不上了。
+    fake.handlers.error(new Error('ENOSPC: System limit for number of file watchers reached'));
+
+    assert.equal(watcher.status(), 'failed', '執行期錯誤不得讓狀態停在 watching');
+    assert.match(watcher.lastError, /ENOSPC/);
+    assert.equal(log.entries.some(function (entry) { return entry.event === 'watcher.error'; }), true);
+  } finally {
+    await watcher.stop();
+  }
+});
+
 test('createProjectWatcher：chokidar 載入失敗時退到 fs.watch（或明確回報 failed）', async function (t) {
   const dir = await makeTempDir(t, 'cbm-watch-backend');
   const log = makeFakeLog();
