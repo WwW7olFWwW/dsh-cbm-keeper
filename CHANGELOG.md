@@ -5,6 +5,112 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-07
+
+> 這一版由一次四維度審查（程式碼品質／效能／UI-UX／產品市場）驅動，共 8 條工作流。
+> **最重要的一件事**：0.3.0 的「45 秒冷卻」只把重建風暴壓低頻率，沒有治好它——實測顯示
+> 一個正在被編輯的專案仍然每 52 秒燒掉一次完整重建，而且**每一次都在重建途中被中止，
+> 圖譜從頭到尾沒有追上過**。這一版給出可重現的量測工具與根治手段。
+
+### 量測：`npm run bench`
+
+新增 `tools/bench-dirty-chase.mjs`——用真的 `CbmKeeper`、真的 `node:fs.watch`、真的計時器，
+把 git 探針／CBM CLI／重建本身換成可計數的注入替身，模擬「連續編輯 20 秒、50 次存檔，然後停手」。
+時間參數等比壓縮約 1/30（比例不變，可外推），重建替身忠實重現 CBM 的
+`aborted_previous_preserved` 行為。零外部相依、可重跑、可進 CI。
+
+同一支工具在 0.3.0 與 0.4.0 上的對照（`node tools/bench-dirty-chase.mjs`）：
+
+| | 0.3.0 | 0.4.0（`dirtySettleSeconds: 90`） |
+|---|---|---|
+| 編輯期間的重建 | 10 次 | **0 次** |
+| 重建成功 | **0 次** | **1 次** |
+| 被 `aborted_previous_preserved` 中止 | 10 次 | **0 次** |
+| 停手後追上圖譜 | **沒有追上** | 追上 |
+| 注入探針呼叫 | 214 | **66**（−69%） |
+| 　其中 CBM CLI | 112 | **9**（−92%） |
+
+### Added
+
+- **設定欄位 `dirtySettleSeconds`（預設 `0`＝維持原行為）**：未提交變更的專案要靜默幾秒才重建。
+  設成 `90` 可讓「編輯期間的重建」從 10 次降到 0 次、被中止從 10 次降到 0 次，圖譜仍在停手後追上。
+  **預設刻意留 0**：這是行為變更，決定權在部署者。
+- **具名警告 `dirty-chase-detected`**：當 `dirtySettleSeconds` 還是 `0`、且插件**實際觀察到**重建在途中被中止
+  （24 小時內 ≥3 次、且佔已完成嘗試 ≥50%）時，用你自己的統計數字提醒你這個欄位存在。
+  **沒有觀察到就不會出現**——新安裝不會被嘮叨，視窗滑出後警告自己消失。
+- **`status().stats`：20 個扁平數字 ＋ `statsSince`**。涵蓋排入／成功／失敗／被中止／冷卻跳過／
+  閘門跳過／settle 延後與落地／被短路省下的檢查／累計重建毫秒，每個概念都有
+  `sinceStart*` 與 `last24h*` 兩鍵。**刻意命名為「本次啟動以來」而非歷史總計**——
+  日誌檔 5 MB 輪替只留 `.1`，回填出來的「歷史」本身殘缺，比誠實標示更容易誤導。
+  同一組數字也呈現在卡片上的「**成效**」區塊（統計缺席或全 0 時整塊不渲染）。
+- **常駐狀態指示**（側邊欄 `sidebar.footer.action`）：有落後專案時顯示 warn 圓點、有重建失敗或
+  監看失敗時顯示 error 圓點與數量，**全部新鮮時不渲染任何東西**。輪詢 `?log=0`、30 秒一次、
+  頁面隱藏時暫停、失敗退避（約 0.6 MB/h）。導航 API 經查證不存在，因此它是純指示、不可點擊。
+- **`SECURITY.md`**、**`docs/PUBLISHING.md`**（npm 發布的可執行清單）、
+  **`.github/ISSUE_TEMPLATE/bug_report.yml`**。
+- **README 截圖**（`docs/assets/`，中英各一張）：由 `docs/assets/capture-card.mjs` 以零相依 CDP
+  驅動真實 DSH GUI 拍攝，資料是當下的真 `/state`。可重跑。
+- **辨識碼**：`status().running.startedAt`、`status().logFileError`、`status().stateLoadError`。
+
+### Changed
+
+- **監看路徑的落後複驗不再強制失效圖譜 HEAD 快取**：每次存檔少一次 `query_graph` CLI 呼叫
+  （實測 2.18–2.81 s）。配合下一條，50 次存檔的 CBM CLI 呼叫從 112 次降到 9 次。
+- **settle 視窗內只做便宜的 HEAD 探測**：視窗內的每次觸發只跑 `git rev-parse HEAD`（2–3 ms），
+  HEAD 沒變就只重排計時器、完全不碰 CBM CLI；HEAD 變了（commit／換分支／rebase）則立刻完整複驗
+  並重建。**真正的 HEAD 落後永遠不受 settle 約束**，維持立即重建。
+- **`includeDirty: false` 時不再執行 `git status`**：這個設定下 `record.dirty` 恆為 `false`，
+  語意是「未檢查」而非「乾淨」；卡片在該情況下不顯示髒污標記（沉默，不是斷言乾淨）。
+- **`POST /rebuild` 的 `force` 現在真的傳到佇列**：先前人工與強制重建仍會被冷卻擋下，
+  與本檔 0.3.0 的敘述「人工與強制重建不受此限」矛盾。
+- **`GET /state?log=0` 現在真的回 0 筆**（先前 `recent()` 以 `Math.max(1, …)` 夾住下限）。
+- **被 `includeProjects`／`excludeProjects` 排除的專案不再標成孤兒**：孤兒的定義回到
+  「上游已經沒有這棵樹」，與 [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) 一致。
+- **`POST /config` 加上欄位白名單**：未知欄位名（例如把 `scanMinutes` 打成 `scanMs`）
+  不再靜默寫進 Loader config，回應會帶 `unknown` 陣列；若全部欄位都無法辨識則回 400。
+- **`engines.node` 由 `>=20` 改為 `>=20.13`**：Linux 的遞迴 `fs.watch` 自 Node 20.13.0 才有
+  （[nodejs/node#45098](https://github.com/nodejs/node/pull/45098)），先前 20.0–20.12 會直接落到
+  `backend: 'failed'`。CI 的 node 20 格永遠是最新 20.x，測不到這一段。
+- **設定頁卡片整塊重寫**（743 → 1707 行）：頂端摘要列、離線與錯誤橫幅置頂、統一的
+  `role="status"` 操作回饋、健康區塊（CLI 原因與候選路徑、日誌／狀態檔錯誤）、專案卡兩層與
+  chips 過濾、破壞性操作兩段式確認、`relativeTime` 等硬編碼中文收進字典。
+  **輪詢成本**：日誌面板收起時由每次 26,428 bytes 降到 5,253 bytes（−80%，約 34.9 → 6.3 MB/h），
+  頁面隱藏時為 0。
+- **英文介面的警告與「不可作為證據的宣告」改走 `code → 字典`**，未知 code 一律回退顯示 host 原文。
+
+### Fixed
+
+- **`drain()` 的 promise 拒絕無人接手**：`void this.drain()` 沒有 `.catch()`，
+  一次重建拋錯就會變成 unhandledRejection，而 Node 的預設行為是**終止行程**——
+  等於殺掉整個 DSH 宿主。已改為記錄 `drain.failed`，並加上會讓修法還原就變紅的測試。
+- **卸載競態：`stop()` 不等在飛的掃描**：掃描會在 `stop()` 回傳之後才建立監看器，且此後不再被停止
+  （實測 `stop()` 回傳後 `watchers.size === 1`）。已讓 `stop()` 等待 `refreshPromise`，
+  並在 `reconcileWatchers`／`startWatcher` 入口檢查 `stopped`。
+- **卸載時重建子行程可能在背後繼續跑**：`AbortController` 原本在取得重建鎖之後才建立，
+  `stop()` 撞上取鎖期間就來不及 abort。已改為先建 controller 再取鎖。
+- **監看器的執行期錯誤永遠到不了卡片**：`record.watcher` 是建立當下的快照，全庫沒有任何地方
+  重讀 `watcher.status()`／`lastError`——0.3.0 的「inotify 用盡要顯示 failed」修正因此從未生效。
+  已改為在 `list()`／`status()` 向監看器取即時狀態。
+- **`fs.watch` 沒有檔名時的退路被副檔名白名單丟棄**：該分支用 `'__unknown__'` 當路徑，
+  它沒有副檔名，所以一律被白名單擋掉，與註解「保守地當成一次觸發」正好相反。
+- **PATH 掃描硬編 `:`**：Windows 的分隔符是 `;`，而同一段邏輯在 `lib/exec.js` 與 `lib/cli.js`
+  各有一份。已抽出共用並改用 `path.delimiter`。
+- **生成檔不再驅動重建**：`auto-imports.d.ts` 一個檔案就佔了全部監看觸發的 529/920（約 57%）。
+  新增 `DEFAULT_WATCH_GENERATED_PATTERNS`（明確清單，**刻意不用廣義 `*.d.ts`**，
+  手寫的 `.d.ts` 仍有測試保證會觸發）。
+- 清掉一批死碼（`PLUGIN_NAME`、`SETTINGS_SECTION_ID`、`isGitWorktree`、`__gitInternals`、
+  `removeProject`、`writeTempFile`、keeper 未使用的兩個匯入），並以 `test/api-surface.test.js`
+  守門，避免它們悄悄回來。
+
+### 驗證
+
+- 單元測試 **139 → 184**，`node --test test/*.test.js` 全綠。
+- `tools/verify-keeper.mjs` 23/23；`tools/verify-client.mjs` **30 → 212**。
+- `node tools/bench-dirty-chase.mjs`（`npm run bench`）可重跑，上表即為它的輸出；
+  `--assert` 模式已加進 CI，會擋住「編輯期間重建 > 1 次、或仍有重建被中止、或停手後沒追上」的回歸。
+- CI 新增獨立的 `bench` job。`verify-keeper`／`verify-client` **沒有**進 CI——前者需要真的
+  `codebase-memory-mcp`，後者需要一個跑著的 GUI，硬塞只會得到永遠紅或永遠 skip 的假訊號。
+
 ## [0.3.0] - 2026-10-06
 
 > 這一版把「使用者視角審查」的改動全部落地。**兩個對外行為變了**：`GET /config` 的回應形狀
@@ -92,5 +198,8 @@
 - 單元測試 115 項，`node --test test/*.test.js` 全綠，不需要真的索引；CI 在 Node 20／22／24
   與「有／沒有 chokidar」六種組合上跑，且在沒有安裝 DSH 的機器上也能全綠（解析路徑用夾具驗證）。
 
-[Unreleased]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.4.0
+[0.3.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.3.0
+[0.2.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.2.0
 [0.1.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.1.0

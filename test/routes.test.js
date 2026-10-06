@@ -263,7 +263,7 @@ test('POST /rebuild 只排入落後且被選取的專案，未帶 force 時跳�
     body: JSON.stringify({ id: '/srv/a', force: true, mode: 'fast' }),
   });
   assert.equal(forced.json().queued, 1);
-  assert.deepEqual(freshFixture.keeper.enqueued, [{ key: '/srv/a', reason: 'manual', mode: 'fast' }]);
+  assert.deepEqual(freshFixture.keeper.enqueued, [{ key: '/srv/a', reason: 'manual', mode: 'fast', force: true }]);
 });
 
 test('POST /watchers 只接受 pause／resume，找不到專案回 404', async function () {
@@ -344,4 +344,105 @@ test('內文不是 JSON 物件時回 400 並留下路由標籤', async function 
 
   const empty = await call(fixture.byPath[API_PREFIX + '/rebuild'], { method: 'POST', url: API_PREFIX + '/rebuild' });
   assert.equal(empty.status, 200, '空內文視為空物件，不是錯誤');
+});
+
+test('C6：POST /rebuild 的 force 會傳進 enqueue（冷卻閘門不再擋掉人工重建）', async function (t) {
+  const fixture = makeFixture({
+    keeper: { listPayload: [{ key: '/srv/a', name: 'a', selected: true, stale: true }] },
+  });
+
+  // 沒帶 force：照舊（options.force 為 false，keeper 端仍受冷卻限制）。
+  await call(fixture.byPath[API_PREFIX + '/rebuild'], {
+    method: 'POST',
+    url: API_PREFIX + '/rebuild',
+    body: JSON.stringify({ id: '/srv/a' }),
+  });
+  assert.deepEqual(fixture.keeper.enqueued, [{ key: '/srv/a', reason: 'manual', mode: undefined }]);
+
+  // 帶 force：必須把 force=true 傳下去，否則冷卻會擋掉它，而設定說明說它不受限。
+  await call(fixture.byPath[API_PREFIX + '/rebuild'], {
+    method: 'POST',
+    url: API_PREFIX + '/rebuild',
+    body: JSON.stringify({ id: '/srv/a', force: true }),
+  });
+  assert.equal(fixture.keeper.enqueued[1].force, true, 'C6：force 必須傳到 enqueue');
+});
+
+test('D2：POST /config 只寫已知欄位，未知鍵具名回報且不寫入', async function (t) {
+  const written = [];
+  let current = { mode: 'fast', scanMinutes: 5 };
+  const fixture = makeFixture({
+    config: function () { return current; },
+    updateConfig: async function (patch) {
+      written.push(patch);
+      current = Object.assign({}, current, patch);
+    },
+  });
+
+  const mixed = await call(fixture.byPath[API_PREFIX + '/config'], {
+    method: 'POST',
+    url: API_PREFIX + '/config',
+    // scanMs 是 runtime 形狀的鍵名（GET /config 的 runtime 那一份），原樣 POST 回來
+    // 是最常見的誤用；以前它會被靜默寫進 Loader config。
+    body: JSON.stringify({ scanMinutes: 10, scanMs: 600000 }),
+  });
+  assert.equal(mixed.status, 200);
+  assert.deepEqual(written, [{ scanMinutes: 10 }], 'D2：未知鍵不得進 updateConfig');
+  const payload = mixed.json();
+  assert.equal(payload.ok, true, '成功回應仍維持 {ok:true, …}');
+  assert.deepEqual(payload.unknown, ['scanMs']);
+  assert.equal(payload.config.scanMinutes, 10);
+
+  // 全部都是未知鍵：回 400，不假裝寫入成功。
+  const none = await call(fixture.byPath[API_PREFIX + '/config'], {
+    method: 'POST',
+    url: API_PREFIX + '/config',
+    body: JSON.stringify({ scanMs: 1, nope: true }),
+  });
+  assert.equal(none.status, 400);
+  assert.equal(none.json().error, '沒有可辨識的設定欄位');
+  assert.deepEqual(none.json().unknown, ['nope', 'scanMs']);
+  assert.equal(written.length, 1, 'D2：整批未知時不得呼叫 updateConfig');
+});
+
+test('D6：/check 與 /rebuild 對不存在的 id 回同一份 404', async function () {
+  const fixture = makeFixture({
+    keeper: { listPayload: [{ key: '/srv/a', name: 'a', selected: true, stale: true }] },
+  });
+  const fromCheck = await call(fixture.byPath[API_PREFIX + '/check'], {
+    method: 'POST', url: API_PREFIX + '/check', body: JSON.stringify({ id: '/srv/nope' }),
+  });
+  const fromRebuild = await call(fixture.byPath[API_PREFIX + '/rebuild'], {
+    method: 'POST', url: API_PREFIX + '/rebuild', body: JSON.stringify({ id: '/srv/nope' }),
+  });
+  assert.equal(fromCheck.status, 404);
+  assert.equal(fromRebuild.status, 404);
+  assert.deepEqual(fromCheck.json(), fromRebuild.json(), 'D6：兩條路由的錯誤必須逐字一致');
+  assert.deepEqual(fromCheck.json().error, '找不到這個專案：/srv/nope');
+  assert.equal(typeof fromCheck.json().hint, 'string');
+  assert.deepEqual(fixture.keeper.enqueued, []);
+});
+
+test('WS5：GET /state?log=0 與 /log?limit=0 回 0 筆（面板收起時不再白抓一筆）', async function () {
+  const fixture = makeFixture();
+  fixture.log.info('a', {});
+  fixture.log.info('b', {});
+  fixture.log.info('c', {});
+
+  const zero = await call(fixture.byPath[API_PREFIX + '/state'], { url: API_PREFIX + '/state?log=0' });
+  assert.equal(zero.status, 200);
+  assert.deepEqual(zero.json().log, [], '0 是真的 0 筆');
+  assert.equal(zero.json().projects.length, 0, '其他欄位照常');
+
+  const negative = await call(fixture.byPath[API_PREFIX + '/state'], { url: API_PREFIX + '/state?log=-3' });
+  assert.deepEqual(negative.json().log, [], '負數不可能回得比 0 更少');
+
+  const junk = await call(fixture.byPath[API_PREFIX + '/state'], { url: API_PREFIX + '/state?log=abc' });
+  assert.equal(junk.json().log.length, 3, '非數字仍回預設（不是 0 筆）');
+
+  const logZero = await call(fixture.byPath[API_PREFIX + '/log'], { url: API_PREFIX + '/log?limit=0' });
+  assert.deepEqual(logZero.json().entries, []);
+
+  const logOne = await call(fixture.byPath[API_PREFIX + '/log'], { url: API_PREFIX + '/log?limit=1' });
+  assert.deepEqual(logOne.json().entries.map(function (entry) { return entry.event; }), ['c']);
 });

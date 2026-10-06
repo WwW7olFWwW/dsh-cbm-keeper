@@ -187,3 +187,27 @@ test('KeeperLog：open() 建目錄失敗不致命，只記 fileError', async fun
   assert.equal(typeof log.fileError, 'string');
   assert.equal(log.recent(10).length, 1, '記憶體日誌照常');
 });
+
+test('recent(0) 是真的 0 筆（UI 日誌面板收起時的語意）', async function (t) {
+  const dir = await makeTempDir(t, 'cbm-log-zero');
+  const made = await makeLog(dir);
+  made.log.info('a.one', {});
+  made.log.info('a.two', {});
+  made.log.info('a.three', {});
+
+  // 以前是 Math.max(1, …)：收起日誌還是抓 1 筆，那筆白付在每次輪詢的 payload 裡。
+  assert.deepEqual(made.log.recent(0), [], '0 是合法的 0 筆');
+  assert.equal(made.log.recent(1).length, 1);
+  assert.equal(made.log.recent(2).length, 2);
+  assert.equal(made.log.recent().length, 3, '未給＝預設值（這裡只有 3 筆）');
+  assert.equal(made.log.recent(undefined).length, 3);
+
+  // 回退規則：非有限數回預設、負數夾到 0（不可能回比 0 更少）。
+  assert.equal(made.log.recent(Number.NaN).length, 3, 'NaN＝用預設值，不是 0 筆');
+  assert.equal(made.log.recent(Number.POSITIVE_INFINITY).length, 3, 'Infinity 也走預設值');
+  assert.deepEqual(made.log.recent(-5), [], '負數夾到 0');
+  assert.equal(made.log.recent(2.7).length, 2, '小數向下取整');
+
+  // 超過保留上限時以上限為準。
+  assert.equal(made.log.recent(10_000).length, 3);
+});

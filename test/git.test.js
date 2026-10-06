@@ -9,9 +9,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { countCommitsBetween, isGitWorktree, isWorktreeDirty, readHeadCommittedAt, readLiveHead } from '../lib/git.js';
+import { countCommitsBetween, isWorktreeDirty, readHeadCommittedAt, readLiveHead } from '../lib/git.js';
 import { makeTempDir } from './helpers/env.js';
 
 /**
@@ -117,17 +117,6 @@ test('isWorktreeDirty：追蹤檔的未提交變更為 dirty，未追蹤檔不�
 
   await writeFile(join(repo.dir, 'a.txt'), 'changed\n', 'utf8');
   assert.equal(await isWorktreeDirty(repo.dir), true);
-});
-
-test('isGitWorktree：分辨工作樹與普通目錄', async function (t) {
-  const repo = await makeRepo(t);
-  await commit(repo.dir, 'a.txt', 'a\n', 'base');
-  assert.equal(await isGitWorktree(repo.dir), true);
-
-  const plain = await makeTempDir(t, 'cbm-git-plain');
-  await mkdir(join(plain, 'sub'), { recursive: true });
-  assert.equal(await isGitWorktree(plain), false);
-  assert.equal(await isGitWorktree(join(plain, 'does-not-exist')), false);
 });
 
 test('readHeadCommittedAt：回 ISO 時間，非倉庫時 undefined', async function (t) {

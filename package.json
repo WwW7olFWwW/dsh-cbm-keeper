@@ -1,10 +1,10 @@
 {
   "name": "dsh-codebase-watcher",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "DSH × Codebase Memory 圖譜保鮮插件：讓 CBM 知識圖譜自動跟上各專案的 git HEAD（落後偵測、條件式 CLI 重建、每專案監看、設定頁觀測卡片與 REST 控制面）。",
   "engines": {
-    "node": ">=20",
+    "node": ">=20.13",
     "dsh": ">=0.2.0-rc.2"
   },
   "main": "lib/index.js",
@@ -20,7 +20,8 @@
     "client": {
       "platform": "web",
       "inject": [
-        "@deepseek-ai/dsh-client-ui-settings"
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-sidebar"
       ]
     }
   },
@@ -34,14 +35,16 @@
     "README.en.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
+    "SECURITY.md",
     "LICENSE",
     "docs"
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
-    "test:syntax": "for f in lib/*.js test/*.js test/helpers/*.js tools/*.mjs; do node --check \"$f\" || exit 1; done",
+    "test:syntax": "for f in lib/*.js test/*.js test/helpers/*.js tools/*.mjs docs/assets/*.mjs; do node --check \"$f\" || exit 1; done",
     "verify:keeper": "node tools/verify-keeper.mjs",
-    "verify:client": "node tools/verify-client.mjs"
+    "verify:client": "node tools/verify-client.mjs",
+    "bench": "node tools/bench-dirty-chase.mjs"
   },
   "keywords": [
     "dsh",

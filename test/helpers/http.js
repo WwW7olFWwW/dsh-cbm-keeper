@@ -73,8 +73,11 @@ export function makeStubKeeper(overrides) {
     list: function () { return stub.listPayload; },
     caveats: function () { return stub.caveatsPayload; },
     check: async function (key) { stub.checkCalls.push(key); return stub.checkResult; },
-    enqueue: function (key, reason, mode) {
-      stub.enqueued.push({ key, reason, mode });
+    enqueue: function (key, reason, mode, options) {
+      const entry = { key, reason, mode };
+      // C6：只有真的帶 force 時才記錄這個鍵，讓「沒傳」與「傳 false」在斷言上等價。
+      if (options !== undefined && options.force === true) entry.force = true;
+      stub.enqueued.push(entry);
       return true;
     },
     watcherAction: async function (key, action) {

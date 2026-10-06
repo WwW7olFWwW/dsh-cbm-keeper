@@ -359,3 +359,15 @@ test('unknownConfigKeys：列出不在 CONFIG_FIELDS 的鍵', function () {
   assert.deepEqual(unknownConfigKeys(undefined), []);
   assert.deepEqual(unknownConfigKeys({ scanMs: 300000, extensions: ['ts'] }), ['scanMs'], '`extensions` 是已知鍵（形狀不同），`scanMs` 才是未知');
 });
+
+test('resolveKeeperConfig：dirtySettleSeconds 產出 dirtySettleMs（C1，預設 0）', function () {
+  assert.equal(CONFIG_DEFAULTS.dirtySettleSeconds, 0, '預設 0＝維持現行行為');
+  assert.equal(resolveKeeperConfig(undefined).dirtySettleMs, 0);
+  assert.equal(resolveKeeperConfig({ dirtySettleSeconds: 90 }).dirtySettleMs, 90000);
+  // 界線與 schema 一致：0–3600 秒。
+  assert.equal(resolveKeeperConfig({ dirtySettleSeconds: -5 }).dirtySettleMs, 0);
+  assert.equal(resolveKeeperConfig({ dirtySettleSeconds: 99999 }).dirtySettleMs, 3600000);
+  assert.equal(resolveKeeperConfig({ dirtySettleSeconds: 'soon' }).dirtySettleMs, 0, '非數字回預設');
+  assert.equal(resolveKeeperConfig({ dirtySettleSeconds: '' }).dirtySettleMs, 0, '空字串對數值欄位＝沒填');
+  assert.equal(CONFIG_FIELDS.includes('dirtySettleSeconds'), true, 'POST /config 與 schema 共用同一組欄位名');
+});

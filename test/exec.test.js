@@ -6,8 +6,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
-import { execFileText, searchPath } from '../lib/exec.js';
+import { delimiter, join } from 'node:path';
+import { execFileText, searchPath, splitPathDirs } from '../lib/exec.js';
 
 test('searchPath：先目錄後檔名，命中即回傳', async function () {
   const seen = [];
@@ -103,4 +103,19 @@ test('execFileText：AbortSignal 取消時 aborted 為 true 且不 reject', asyn
   const result = await pending;
   assert.equal(result.aborted, true);
   assert.equal(result.timedOut, false);
+});
+
+test('D5：splitPathDirs 用平台分隔符切 PATH（Windows 是分號）', function () {
+  assert.deepEqual(splitPathDirs(['/a', '/b'].join(delimiter)), ['/a', '/b']);
+  assert.deepEqual(splitPathDirs(''), []);
+  assert.deepEqual(splitPathDirs(undefined), []);
+  assert.deepEqual(splitPathDirs(delimiter + '/a' + delimiter + delimiter), ['/a'], '空目錄項要濾掉');
+  // 另一個平台的符號不得被當成分隔符：'a:b' 在 POSIX 上是兩個目錄，
+  // 在 Windows 上必須是**一個**（目錄名裡有冒號）。這條斷言跟著平台走。
+  const other = delimiter === ':' ? ';' : ':';
+  assert.deepEqual(
+    splitPathDirs('/a' + other + '/b'),
+    delimiter === ':' ? ['/a' + other + '/b'] : ['/a', '/b'],
+    '只有本平台的分隔符能切開 PATH',
+  );
 });

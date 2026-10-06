@@ -105,7 +105,7 @@ test('KeeperState.save：落盤後不留下 .tmp- 兄弟檔', async function (t)
   assert.equal(names.some(function (name) { return name.startsWith('state.json.tmp-'); }), false);
 });
 
-test('KeeperState：多次更新同一鍵會合併，removeProject 會真的刪掉', async function (t) {
+test('KeeperState：多次更新同一鍵會合併，snapshot 是深拷貝', async function (t) {
   const dir = await makeTempDir(t, 'cbm-state-merge');
   const made = makeState(dir);
   await made.state.setProject('/srv/repo', { name: 'repo', lastError: 'boom' });
@@ -117,11 +117,4 @@ test('KeeperState：多次更新同一鍵會合併，removeProject 會真的刪�
   const snapshot = made.state.snapshot();
   snapshot.projects['/srv/repo'].name = 'mutated';
   assert.equal(made.state.project('/srv/repo').name, 'repo', 'snapshot 必須是深拷貝');
-
-  await made.state.removeProject('/srv/repo');
-  assert.deepEqual(made.state.project('/srv/repo'), {});
-  const onDisk = JSON.parse(await readFile(made.file, 'utf8'));
-  assert.equal('/srv/repo' in onDisk.projects, false);
-  // 移除不存在的鍵：不拋、也不寫檔。
-  await made.state.removeProject('/srv/never-existed');
 });

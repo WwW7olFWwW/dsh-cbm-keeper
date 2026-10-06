@@ -6,13 +6,16 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_BEHIND_BY } from '../lib/constants.js';
+import { DEFAULT_WATCH_GENERATED_PATTERNS, MAX_BEHIND_BY } from '../lib/constants.js';
 import {
   buildGraphBase,
   buildGraphUrl,
   canonicalRootPath,
   decideStaleness,
+  isDirtyOnlyStale,
+  isDirtySettled,
   isExcludedPath,
+  isGeneratedPath,
   matchesExtensionWhitelist,
   mergeProjectsByRootPath,
   normalizeBehindBy,
@@ -334,4 +337,74 @@ test('buildGraphUrl：帶上 tab 與 project，沒有 base 就沒有網址', fun
   assert.equal(buildGraphUrl(base, { project: '   ' }), 'http://127.0.0.1:9749/?tab=graph', '空專案名不帶參數');
   assert.equal(buildGraphUrl(undefined, { project: 'x' }), undefined);
   assert.equal(buildGraphUrl('', {}), undefined);
+});
+
+test('C1：isDirtyOnlyStale 只認「未提交變更」那一種落後', function () {
+  assert.equal(isDirtyOnlyStale(['head-match-but-dirty']), true);
+  assert.equal(isDirtyOnlyStale([]), false);
+  assert.equal(isDirtyOnlyStale(undefined), false);
+  assert.equal(isDirtyOnlyStale(['head-match']), false);
+  // HEAD 前進是真的落後，必須立即重建，不能被 settle 視窗延後。
+  assert.equal(isDirtyOnlyStale(['head-advanced']), false);
+  assert.equal(isDirtyOnlyStale(['head-advanced', 'head-match-but-dirty']), false);
+  assert.equal(isDirtyOnlyStale(['time-fallback-head-newer']), false);
+});
+
+test('C1：isDirtySettled 的三個條件（有活動／已靜默／活動在索引之後）', function () {
+  const now = Date.parse('2026-10-06T12:00:00Z');
+  const at = function (seconds) { return new Date(now - seconds * 1000).toISOString(); };
+
+  // 沒有任何活動：放著不動的 dirty 專案不值得重跑。
+  assert.equal(isDirtySettled({ lastTriggerAt: undefined, lastIndexedAt: undefined, settleMs: 0, now }), false);
+  // 有活動、時間可解析、沒有索引紀錄：值得。
+  assert.equal(isDirtySettled({ lastTriggerAt: at(60), lastIndexedAt: undefined, settleMs: 0, now }), true);
+  // settleMs＝0 退化成現行行為：只要有活動就算（不看靜默時間）。
+  assert.equal(isDirtySettled({ lastTriggerAt: at(0), lastIndexedAt: undefined, settleMs: 0, now }), true);
+  // 靜默視窗還沒到：不排。
+  assert.equal(isDirtySettled({ lastTriggerAt: at(5), lastIndexedAt: undefined, settleMs: 30000, now }), false);
+  // 剛好到期：排（邊界值算已靜默）。
+  assert.equal(isDirtySettled({ lastTriggerAt: at(30), lastIndexedAt: undefined, settleMs: 30000, now }), true);
+  // 活動在最後一次索引之前：那次活動早就被索引涵蓋了，不必重跑。
+  assert.equal(isDirtySettled({
+    lastTriggerAt: at(120),
+    lastIndexedAt: at(60),
+    settleMs: 0,
+    now,
+  }), false);
+  // 活動在索引之後：值得。
+  assert.equal(isDirtySettled({
+    lastTriggerAt: at(10),
+    lastIndexedAt: at(600),
+    settleMs: 0,
+    now,
+  }), true);
+  // 時間戳無法解析＝沒有可用證據，不得當成「已靜默」。
+  assert.equal(isDirtySettled({ lastTriggerAt: 'not-a-time', lastIndexedAt: undefined, settleMs: 0, now }), false);
+  // 非法的 settleMs 視為 0（不因為壞設定就把重建全鎖住）。
+  assert.equal(isDirtySettled({ lastTriggerAt: at(1), lastIndexedAt: undefined, settleMs: Number.NaN, now }), true);
+});
+
+test('C5：isGeneratedPath 只殺生成檔，手寫的 .d.ts 不受影響', function () {
+  const patterns = DEFAULT_WATCH_GENERATED_PATTERNS;
+  assert.equal(patterns.includes('auto-imports.d.ts'), true);
+  assert.equal(patterns.includes('components.d.ts'), true);
+  assert.equal(patterns.includes('*.d.ts'), false, '不可用廣義 .d.ts：手寫型別宣告是原始碼');
+
+  assert.equal(isGeneratedPath('auto-imports.d.ts', patterns), true);
+  assert.equal(isGeneratedPath('src/auto-imports.d.ts', patterns), true);
+  assert.equal(isGeneratedPath('src/components.d.ts', patterns), true);
+  assert.equal(isGeneratedPath('src/api.gen.ts', patterns), true);
+  assert.equal(isGeneratedPath('lib/model.g.dart', patterns), true);
+  assert.equal(isGeneratedPath('proto/svc.pb.go', patterns), true);
+  assert.equal(isGeneratedPath('ui/Form.designer.cs', patterns), true);
+
+  // 手寫的檔案一律不得被誤殺。
+  assert.equal(isGeneratedPath('src/types/api.d.ts', patterns), false);
+  assert.equal(isGeneratedPath('src/app.ts', patterns), false);
+  assert.equal(isGeneratedPath('src/gen.ts', patterns), false, 'gen 不是 *.gen.* 的形狀');
+  assert.equal(isGeneratedPath('src/generator.ts', patterns), false);
+  assert.equal(isGeneratedPath('', patterns), false);
+  assert.equal(isGeneratedPath('src/app.ts', []), false);
+  // 只比對檔名：目錄名裡出現關鍵字不算。
+  assert.equal(isGeneratedPath('auto-imports.d.ts.bak/app.ts', patterns), false);
 });

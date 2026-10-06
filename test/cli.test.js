@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { makeTempDir } from './helpers/env.js';
 import { installFakeCbm } from './helpers/fake-cbm.js';
 import { CliNotFoundError, parseJsonEnvelope, readCliVersion, resolveCliPath, runCbmTool } from '../lib/cli.js';
@@ -240,4 +240,30 @@ test('runCbmTool：端到端跑假 CLI 並回傳解析後的內文', async funct
   assert.equal(noBinary.ok, false);
   assert.match(noBinary.error, /CLI 啟動失敗/);
   assert.equal(noBinary.timedOut, false);
+});
+
+test('D5：PATH 候選清單與 exec.splitPathDirs 用同一份切法', async function () {
+  const attempted = [];
+  await assert.rejects(
+    resolveCliPath({
+      env: { PATH: ['/one', '/two'].join(delimiter) },
+      home: '/home/nobody',
+      isExecutable: async function (candidate) {
+        attempted.push(candidate);
+        return false;
+      },
+    }),
+    function (error) {
+      assert.equal(error instanceof CliNotFoundError, true);
+      const fromPath = error.candidates.filter(function (candidate) {
+        return candidate.startsWith('/one/') || candidate.startsWith('/two/');
+      });
+      assert.deepEqual(fromPath, [
+        join('/one', 'codebase-memory-mcp'),
+        join('/two', 'codebase-memory-mcp'),
+      ]);
+      return true;
+    },
+  );
+  assert.equal(attempted.length > 0, true);
 });

@@ -54,10 +54,12 @@ async function makeWatcher(options) {
     root: settings.root,
     excludes: settings.excludes ?? ['node_modules', '.git'],
     extensions: settings.extensions ?? ['ts', 'vue'],
+    generatedPatterns: settings.generatedPatterns,
     debounceMs: settings.debounceMs ?? 300,
     onTrigger: settings.onTrigger ?? function () {},
     log: settings.log ?? makeFakeLog(),
     loadChokidar: settings.loadChokidar ?? failingLoader(),
+    watch: settings.watch,
   });
 }
 
@@ -229,6 +231,79 @@ test('createProjectWatcher：onTrigger 拋錯不得打斷監看', async function
     // 第二次仍然照常運作：例外沒有殺死防抖計時器。
     await writeFile(join(dir, 'b.ts'), '2\n', 'utf8');
     await waitFor(function () { return calls > 1; }, { timeoutMs: 6000, label: '第二次觸發' });
+  } finally {
+    await watcher.stop();
+  }
+});
+
+test('B4：fs.watch 沒回檔名時仍然觸發一次，不再被白名單擋掉', async function (t) {
+  const dir = await makeTempDir(t, 'cbm-watch-null-name');
+  const triggers = [];
+  let listener;
+  const watcher = await makeWatcher({
+    root: dir,
+    debounceMs: 200,
+    onTrigger: function (info) { triggers.push(info); },
+    // 注入 fs.watch：要驗的是「沒有檔名」這條分支，不是平台的 inotify 行為。
+    watch: function (_root, _options, handler) {
+      listener = handler;
+      return { on: function () {}, close: function () {} };
+    },
+  });
+  try {
+    assert.equal(watcher.backend, 'fs.watch');
+    listener('change', null);
+
+    // 以前這裡拿 '__unknown__' 去問副檔名白名單：那個字串沒有副檔名，
+    // matchesExtensionWhitelist 一律回 false，於是「保守地當成一次觸發」的註解
+    // 與行為正好相反——那些平台上的存檔永遠追不上。
+    await waitFor(function () { return triggers.length > 0; }, {
+      timeoutMs: 5000,
+      label: '無檔名事件必須觸發',
+    });
+    assert.equal(triggers.length, 1);
+    assert.equal(triggers[0].count, 1);
+    assert.deepEqual(triggers[0].sample, ['__unknown__'], '樣本仍要能顯示這是一次無檔名事件');
+    assert.equal(watcher.triggers, 1);
+
+    // 沒有檔名時沒有東西可過濾，這是刻意的；但第二次事件仍照常觸發。
+    listener('change', undefined);
+    await waitFor(function () { return triggers.length > 1; }, {
+      timeoutMs: 5000,
+      label: '第二次無檔名事件',
+    });
+  } finally {
+    await watcher.stop();
+  }
+});
+
+test('C5：生成檔不觸發，手寫的 .d.ts 仍然觸發', async function (t) {
+  const dir = await makeTempDir(t, 'cbm-watch-generated');
+  const fake = makeFakeChokidar();
+  const triggers = [];
+  const watcher = await makeWatcher({
+    root: dir,
+    loadChokidar: fake.load,
+    // 白名單放寬到涵蓋所有被測副檔名：這樣擋下來的一定是「生成檔」規則本身，
+    // 而不是碰巧被白名單擋掉。
+    extensions: ['ts', 'vue', 'dart', 'go', 'cs'],
+    onTrigger: function (info) { triggers.push(info); },
+  });
+  try {
+    fake.handlers.all('change', join(dir, 'auto-imports.d.ts'));
+    fake.handlers.all('change', join(dir, 'src/components.d.ts'));
+    fake.handlers.all('change', join(dir, 'src/api.gen.ts'));
+    fake.handlers.all('change', join(dir, 'lib/model.g.dart'));
+    fake.handlers.all('change', join(dir, 'proto/svc.pb.go'));
+    // 給防抖視窗兩倍時間：若生成檔規則失效，這裡會觀察到觸發。
+    await new Promise(function (resolve) { setTimeout(resolve, 700); });
+    assert.deepEqual(triggers, [], 'C5：生成檔不得算成「有活動」');
+    assert.equal(watcher.triggers, 0);
+
+    // 手寫的型別宣告是原始碼，不能被廣義的 *.d.ts 誤殺。
+    fake.handlers.all('change', join(dir, 'src/types/api.d.ts'));
+    await waitFor(function () { return triggers.length > 0; }, { timeoutMs: 5000, label: '手寫 .d.ts 觸發' });
+    assert.deepEqual(triggers[0].sample, ['src/types/api.d.ts']);
   } finally {
     await watcher.stop();
   }

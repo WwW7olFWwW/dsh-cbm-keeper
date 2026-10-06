@@ -5,7 +5,7 @@
  * 的小工具。所有測試都靠它們把自己的副作用限制在 os.tmpdir() 內。
  */
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -50,7 +50,13 @@ export function makeFakeLog() {
     warn: function (event, data) { push('warn', event, data); },
     error: function (event, data) { push('error', event, data); },
     debug: function (event, data) { push('debug', event, data); },
-    recent: function (limit) { return entries.slice(-limit); },
+    // 與 KeeperLog.recent 同一套語意（0 是真的 0 筆）：用假日誌器寫的斷言若與
+    // 真實日誌器不一致，測試就會給出假的信心。
+    recent: function (limit) {
+      const requested = limit === undefined || !Number.isFinite(limit) ? 100 : Math.floor(limit);
+      const size = Math.max(0, requested);
+      return entries.slice(Math.max(0, entries.length - size));
+    },
   };
 }
 
@@ -75,14 +81,4 @@ export async function waitFor(predicate, options) {
     }
     await new Promise(function (resolve) { setTimeout(resolve, intervalMs); });
   }
-}
-
-/**
- * 在暫存目錄內寫一個檔案（含建立父目錄）。
- * @param {string} file - 目標絕對路徑。
- * @param {string} content - 內容。
- * @returns {Promise<void>} 寫入完成。
- */
-export async function writeTempFile(file, content) {
-  await writeFile(file, content, 'utf8');
 }
