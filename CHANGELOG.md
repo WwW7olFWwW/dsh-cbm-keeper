@@ -113,8 +113,18 @@
 
 ### 驗證
 
-- 單元測試 **139 → 198**，`node --test test/*.test.js` 全綠。
+- 單元測試 **139 → 204**，`node --test test/*.test.js` 全綠。
 - `tools/verify-keeper.mjs` 23/23；`tools/verify-client.mjs` **30 → 212**。
+- 新增 `test/http-surface.test.js`：控制面改在**真的 `node:http` 伺服器**上用真的 `fetch`
+  打一遍。先前的路由測試全用手寫的假 `req`／`res`——那個替身只要與真的 Node HTTP 物件有
+  一處語意不同（`req.url` 的形式、`for await` 疊代、`writeHead` 之後才能 `end`…），
+  幾百條斷言可以全綠而真的端點是壞的。這一支把「假替身與真物件一致」本身也變成被測項：
+  真的查詢字串解析、真的 POST 內文讀取、真的 HTTP 狀態碼與 `content-type`、七條路由在真
+  伺服器上都接得上、未命中的路徑由伺服器回 404。**這也是換代前對新 host 碼的 REST 檢查
+  代償**——`dsh web` 要重啟才會上線，但這條路徑現在就能用真 HTTP 走一遍新碼。
+- **三條關鍵修法做過突變驗證**（把修法還原→測試必須變紅→還原）：`force` 傳進佇列（2 條測試
+  變紅）、`includeDirty: false` 不付 `git status`（2 條）、監看路徑的 idle-settle 閘門
+  （**7 條**）。固定的不只是「程式碼有那段」，而是「那段被拿掉時測試會叫」。
 - **發佈包實測可安裝可載入**：`npm pack` → 在乾淨目錄 `npm install` → `import` 得到
   `Config, apply, dshHomeDir, inject, name` 五個匯出，`name === 'codebase-watcher'`（與
   `cordis.patch.yml` 的 row id 一致），`cordis.patch.yml` 在包內，`./client` 入口可解析且
