@@ -193,7 +193,7 @@ index.supervisor.containment_failed outcome=killed
 
 | ID | 需求 | 驗收條件 |
 |---|---|---|
-| **NFR-1 平台** | Linux（Fedora）為主，不得依賴 Windows；純 ESM JavaScript，Node ≥ 20；單一執行期依賴（`chokidar`） | 在 Fedora 上可安裝、可執行、可移除 |
+| **NFR-1 平台** | Linux（Fedora）為主，不得依賴 Windows；純 ESM JavaScript，Node ≥ 20.13（Linux 遞迴 `fs.watch` 的下限）；單一執行期依賴（`chokidar`） | 在 Fedora 上可安裝、可執行、可移除 |
 | **NFR-2 不越權** | 所有寫入限 `~/.dsh/**`、`~/.config/**`、`~/.local/state/**`；**不寫專案樹**；**不需要 sudo** | 安裝與運行過程中無提權提示 |
 | **NFR-3 資源** | idle 時 CPU 近 0；重建以 `nice`＋idle IO 執行；單次重建對互動無感 | 重建期間 GUI 操作不卡 |
 | **NFR-4 觀測** | 所有動作寫結構化日誌（**帶時間戳**）；最近 N 筆可在 UI 查 | 日誌可逐值回溯每次判斷與重建 |

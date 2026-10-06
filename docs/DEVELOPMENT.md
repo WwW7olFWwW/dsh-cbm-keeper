@@ -3,7 +3,7 @@
 ## 跑起來
 
 ```bash
-node --test test/*.test.js             # 單元測試（115 項，不需要真的索引）
+node --test test/*.test.js             # 單元測試（184 項，不需要真的索引）
 node tools/verify-keeper.mjs           # 對真實 CBM CLI 掃描（唯讀，需要 CLI 在 PATH）
 node tools/verify-client.mjs           # 客戶端渲染驗證（需要 dsh web 在跑）
 ```
@@ -33,10 +33,10 @@ systemctl --user restart dsh-web
 
 | 項目 | 證據 |
 |---|---|
-| 單元測試（NFR-7） | `node --test test/*.test.js` → **115 tests / 115 pass / 0 fail / 0 todo**（Node 20／22／24 皆同） |
+| 單元測試（NFR-7） | `node --test test/*.test.js` → **184 tests / 184 pass / 0 fail / 0 todo**（2026-10-07 實測；Node 20／22／24 皆同） |
 | Host 半邊對真實 CLI | `node tools/verify-keeper.mjs` → **23/23**（唯讀掃描 + 孤兒收斂 + 未納管不得重建 + 圖譜 UI 連結） |
 | 圖譜 UI 連結 | 同一支驗證器的最後四項：連結指向 `127.0.0.1:<ui_port>/?tab=graph`、探測結果是布林、每個已納管專案都有 `?project=` 深連結（對 `127.0.0.1:9749` 實測） |
-| 客戶端渲染 | `node tools/verify-client.mjs` → **29/29**（用執行中伺服器的真實回應逐值比對；條數是資料條件式，專案沒有 head 時會少一至兩條） |
+| 客戶端渲染 | `node tools/verify-client.mjs` → **212/212**（2026-10-07 實測；用執行中伺服器的真實回應逐值比對，另含輪詢節流與退避的假時鐘測試、以及英文介面的零 CJK 斷言） |
 | CLI 解析（FR-5） | `cliPath=~/.local/bin/codebase-memory-mcp`, `source=PATH`, `cliVersion=0.11.0`, `supported=true` |
 | 自動納管（FR-7/US-4） | 拋棄式倉庫索引後，下一次 `POST /check` 即被納管並建立監看 |
 | 落後偵測（FR-2） | 樣本倉庫：`graphHead=liveHead`, `stale=false`, `behindBy=0`, `confidence=head` |
@@ -54,6 +54,31 @@ systemctl --user restart dsh-web
 用同一組指令重跑複現；與主機無關的部分（例如 `profilePackageRoots()` 的解析順序）在單元測試裡也
 有對應案例。**改動 `lib/` 之後仍必須重啟 `dsh web` 才會換代**：ESM 模組快取仍供應舊的模組
 世代，重新 apply 只會重跑舊程式碼。
+
+## 怎麼重跑 dirty 追逐的量測
+
+`tools/bench-dirty-chase.mjs` 用真的 `CbmKeeper`、真的 `node:fs.watch` 與真的計時器，把 git 探針、
+CBM CLI 與重建本身換成可計數的注入替身，模擬「一個人連續編輯 20 秒、共 50 次存檔，然後停手 12 秒」，
+用「每輪編輯產生幾次重建」比較 `dirtySettleSeconds` 前後的差異。
+
+```bash
+npm run bench                                          # A/B 兩組（0 與 90 秒）都跑
+node tools/bench-dirty-chase.mjs --settle 90           # 只跑一組，參數是真實秒數
+node tools/bench-dirty-chase.mjs --json                # 機器可讀
+node tools/bench-dirty-chase.mjs --assert --settle 90  # CI 用：不合格就 exit 1
+```
+
+**口徑要講清楚**：這是**比例模型**——真的 `CbmKeeper`、真的 `node:fs.watch`、真的計時器，但 git 探針／
+CBM CLI／重建本身是注入替身，**呼叫次數等於真實的子行程次數**。時間參數等比壓縮約 1/30
+（存檔間隔 400 ms、防抖 300 ms、冷卻 1.5 s、單次重建 250 ms，**比例維持不變**，可以外推），
+所以畫面印出來的毫秒**不是真實秒數**，要乘回去才是。
+
+實測對照：`dirtySettleSeconds = 0`（預設）在編輯期間排入 10 次重建，而 **10 次全部被 CBM 以
+`aborted_previous_preserved` 中止，圖譜一次都沒有追上**；`90` 則編輯期間 0 次重建、成功 1 次、
+被中止 0 次，停手後追上。CI 有一個獨立 job 跑 `--assert --settle 90`，擋的就是前者回來。
+
+工具會先檢查 settle 視窗塞不塞得進觀察窗；塞不進去時它會直接講明「量到的 0 次不代表抑制成功」，
+看到那行就別把 0 當成結果。
 
 ## 為什麼 `Config` 可能是 undefined
 

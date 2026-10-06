@@ -35,6 +35,23 @@ jobs:
       - name: Unit tests
         run: node --test test/*.test.js
 
+  bench:
+    name: dirty-chase regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # 零外部相依：真的 CbmKeeper、真的 node:fs.watch、真的計時器，
+      # 只有 git 探針／CBM CLI／重建本身是注入替身——所以不需要 CBM，也不需要活著的 GUI。
+      # 斷言擋的是 0.3.0 那種行為：編輯期間 10 次重建、10 次全被中止、圖譜一次都沒追上。
+      # --assert 失敗時 exit code 是 1，CI 就該紅。
+      - name: Dirty-chase regression (settle 90)
+        run: node tools/bench-dirty-chase.mjs --assert --settle 90
+
   syntax:
     name: syntax + manifest check
     runs-on: ubuntu-latest

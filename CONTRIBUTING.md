@@ -5,7 +5,7 @@
 
 ## 開發環境
 
-- Node.js >= 20（CI 跑 20 / 22 / 24）
+- Node.js >= 20.13（Linux 遞迴 `fs.watch` 的下限；CI 跑 20 / 22 / 24，20 那格永遠是最新 20.x，測不到 20.0–20.12）
 - 不需要 `npm install` 就能跑測試
 
 ## 跑測試
@@ -19,7 +19,7 @@ node --test test/*.test.js
 
 **不要寫成 `node --test test/`**：Node 會把 `test/` 當成模組而非測試目錄，直接解析失敗。
 
-目前的基準是 **115 tests / 115 pass / 0 fail**。送 PR 前請確認沒有回歸。
+目前的基準是 **184 tests / 184 pass / 0 fail**（2026-10-07 實測；這個數字只會往上加）。送 PR 前請確認沒有回歸。
 
 想跑真實 CLI 的唯讀驗證（需要 `codebase-memory-mcp` 在 PATH）：
 
@@ -54,10 +54,17 @@ node tools/verify-keeper.mjs
 
 1. `lib/config.js` 的 `CONFIG_FIELDS`（含 `volatile()` 與 `.description()`）
 2. `lib/client.js` 設定頁卡片上的顯示／編輯
-3. `README.md` 的設定表格
+3. [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) 的設定欄位表
 4. `test/config.test.js` 的界線與清單語意測試
 
+README 只有一行連到 `docs/CONFIGURATION.md`，設定表的正本在那裡，不在 README。
+
 漏掉第 4 項是最常見的回歸來源。
+
+## 安全性問題
+
+不要開公開 issue，走 [`SECURITY.md`](SECURITY.md) 的私人管道。該檔也列出這個插件的實際行為——
+會執行的子行程、會讀寫的路徑、REST 路由的信任邊界——回報前先看一遍會省很多來回。
 
 ## 授權
 

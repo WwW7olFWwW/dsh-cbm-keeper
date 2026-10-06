@@ -1,0 +1,96 @@
+name: 問題回報
+description: 回報 dsh-codebase-watcher 的行為異常
+title: '[Bug] '
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先確認這不是[已知限制](https://github.com/WwW7olFWwW/dsh-codebase-watcher/blob/main/docs/LIMITATIONS.md)：
+        chokidar 缺席時退回 `node:fs.watch`、以家目錄為根的專案 CBM 不監看、
+        沒有第一個 commit 的倉庫顯示「無法判定」——這些都是預期行為。
+
+        **請先把下方狀態輸出貼上來**，它一次涵蓋版本、CLI 路徑、設定與每個專案的判定依據，
+        少了它通常得多來回兩三輪。
+
+  - type: textarea
+    id: state
+    attributes:
+      label: 外掛狀態輸出
+      description: 在能連到 GUI 的機器上執行，貼上完整輸出（`GET /config` 的內容也有用的話一併貼）。
+      render: json
+      placeholder: |
+        curl -s http://127.0.0.1:3080/api/codebase-watcher/state
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: 外掛版本
+      description: 套件版本，或安裝來源的 commit。狀態輸出裡的 `status.revision` 是執行期序號，不是版本。
+      placeholder: 0.3.0
+    validations:
+      required: true
+
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DSH 版本
+      description: GUI 左下角或 `dsh --version` 顯示的版本。
+      placeholder: 0.2.0-rc.2
+    validations:
+      required: true
+
+  - type: input
+    id: cbm-version
+    attributes:
+      label: Codebase Memory 版本
+      description: 狀態輸出裡的 `status.cliVersion`；CLI 不在 `PATH` 時請填「未解析」並說明實際路徑。
+      placeholder: 0.11.0
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js 版本
+      placeholder: v22.14.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      description: 從乾淨狀態開始的最小步驟。有 `~/.dsh/codebase-watcher/keeper.log` 的相關片段請一併貼上。
+      placeholder: |
+        1. 設定 →「CBM 圖譜」
+        2. 對某個已納管專案按「立即檢查」
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 預期行為與實際行為
+      placeholder: |
+        預期：
+        實際：
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-source
+    attributes:
+      label: 安裝方式
+      options:
+        - github: 規格
+        - Release tarball
+        - 插件市場
+        - 本機 link:
+        - 其他
+    validations:
+      required: true

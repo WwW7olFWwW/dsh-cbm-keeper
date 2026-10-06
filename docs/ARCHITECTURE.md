@@ -4,7 +4,7 @@
 瀏覽器（設定 →「CBM 圖譜」）
    │  settings.section slot，純 fetch
    ▼
-/api/codebase-watcher/{state,log,check,rebuild,watchers,config}      ← Host 半邊（lib/routes.js）
+/api/codebase-watcher/{state,log,check,rebuild,cancel,watchers,config}   ← Host 半邊（lib/routes.js）
    ▼
 CbmKeeper 協調器（lib/keeper.js）
    ├── 掃描：list_projects → 依 realpath(root) 併入專案表（FR-1）
@@ -21,6 +21,9 @@ CbmKeeper 協調器（lib/keeper.js）
 | [`lib/staleness.js`](../lib/staleness.js) | 純決策：身分鍵、落後判定、模式選擇（可單元測試，不需真的索引） |
 | [`lib/cbm.js`](../lib/cbm.js) | CBM CLI 的文字輸出解析（`--json` 只是把 MCP 信封原樣包出） |
 | [`lib/cli.js`](../lib/cli.js) | CLI 路徑解析順序與 `--json` 信封解析 |
+| [`lib/config.js`](../lib/config.js) | 設定 schema（全部 volatile，寫入即生效）與執行期形狀 |
+| [`lib/constants.js`](../lib/constants.js) | 不隨部署改變的事實：插件識別、CLI 呼叫契約、版本支援矩陣、預設排除集 |
+| [`lib/exec.js`](../lib/exec.js) | 子行程原語：逾時、找不到執行檔、非零退出碼一律變成回傳值，不是例外 |
 | [`lib/git.js`](../lib/git.js) | git 探針：HEAD、提交時間、`rev-list --count`、髒污 |
 | [`lib/watcher.js`](../lib/watcher.js) | 每專案檔案監看（chokidar → fs.watch 退路） |
 | [`lib/state.js`](../lib/state.js) | 原子狀態檔（崩潰後恢復重建意圖） |

@@ -2,6 +2,7 @@
 
 ## 已知限制
 
+- **Node.js 要 20.13 以上。** Linux 的遞迴 `fs.watch` 自 Node 20.13.0 才有（[nodejs/node#45098](https://github.com/nodejs/node/pull/45098)），20.0–20.12 上每專案的監看會直接落到 `failed`；掃描與條件式重建不受影響，但存檔不會自動追上。CI 的 node 20 格永遠是最新的 20.x，測不到這一段。
 - **chokidar 是可選相依。** 以 `link:` 安裝時 pnpm 不會把 optionalDependencies 裝進 profile，此時監看自動退回 `node:fs.watch`（遞迴），行為與語意相同，日誌會記一行 `watcher.chokidar.unavailable` 說明原因。要強制用 chokidar，就在插件目錄執行 `pnpm add chokidar@^4`。
 - **以家目錄為根的專案，CBM 不會監看它。** 上游的安全政策會拒絕，這與本插件無關。本插件的監看是自己做的，不受該政策影響，但該專案的 CBM 圖譜仍只在本插件觸發重建時更新。
 - **圖譜裡的結構宣告不能當證據。** 設定頁底部固定列出四條「不可作為證據」的宣告，那是標示，不是缺陷。
@@ -16,6 +17,8 @@ dsh plugin --profile web remove dsh-codebase-watcher
 rm -rf ~/.dsh/codebase-watcher
 rm -f ~/.dsh/profiles/web/node_modules/dsh-codebase-watcher
 ```
+
+`--profile web` 與路徑裡的 `web` 都是這台機器上的 profile 名字，換成你自己的。
 
 第一行移除 bundle 註冊與套件相依；第二行清掉插件自己的狀態檔與日誌；第三行清的是 pnpm 對 `link:` 套件的已知殘留：`node_modules` 裡的符號連結不會跟著相依移除。
 
