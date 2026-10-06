@@ -9,6 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeRoutes } from '../lib/routes.js';
 import { API_PREFIX } from '../lib/constants.js';
+import { CONFIG_FIELDS, CONFIG_DEFAULTS, defaultConfigValues } from '../lib/config.js';
 import { makeFakeLog } from './helpers/env.js';
 import { makeExchange, makeStubKeeper } from './helpers/http.js';
 
@@ -445,4 +446,139 @@ test('WS5：GET /state?log=0 與 /log?limit=0 回 0 筆（面板收起時不再�
 
   const logOne = await call(fixture.byPath[API_PREFIX + '/log'], { url: API_PREFIX + '/log?limit=1' });
   assert.deepEqual(logOne.json().entries.map(function (entry) { return entry.event; }), ['c']);
+});
+
+// ---------------------------------------------------------------------------
+// WS12：GET /config 的 defaults／overridden 與 POST /config 的 reset
+// ---------------------------------------------------------------------------
+
+test('WS12：defaults 與 config 同鍵集、同型別；全新部署的 overridden 是空陣列', async function () {
+  const fixture = makeFixture({
+    // 全新部署＝可寫設定就是一份預設值。
+    configValues: function () { return defaultConfigValues(); },
+    config: function () { return { mode: 'full', scanMs: 300000 }; },
+    keeper: { statusPayload: { revision: 1, queue: [], upstreamConfig: { ui_port: '9749' } } },
+  });
+  const response = await call(fixture.byPath[API_PREFIX + '/config']);
+  assert.equal(response.status, 200);
+  const payload = response.json();
+
+  assert.deepEqual(Object.keys(payload.defaults).sort(), Object.keys(payload.config).sort(), '鍵集必須一致');
+  for (const field of Object.keys(payload.defaults)) {
+    assert.equal(typeof payload.defaults[field], typeof payload.config[field], field + ' 的型別必須一致');
+  }
+  assert.equal(payload.defaults.dirtySettleSeconds, 90, 'WS12：預設 90 秒');
+  assert.equal(CONFIG_DEFAULTS.dirtySettleSeconds, 90);
+  assert.deepEqual(payload.overridden, [], '全是預設值時沒有被覆寫的欄位');
+
+  // 原有的三個鍵一個都不能少、也不能換形狀。
+  assert.equal(payload.config.mode, 'full');
+  assert.equal(payload.runtime.scanMs, 300000);
+  assert.deepEqual(payload.upstream, { ui_port: '9749' });
+});
+
+test('WS12：overridden 只列與預設不同的欄位（排序），reset 之後回到空', async function () {
+  const defaults = defaultConfigValues();
+  let current = Object.assign({}, defaults, { scanMinutes: 30, nice: 0 });
+  const written = [];
+  const fixture = makeFixture({
+    configValues: function () { return current; },
+    // 模擬宿主：undefined 就是 unset（清掉覆寫、落回 schema 的 default()）。
+    updateConfig: async function (patch) {
+      written.push(patch);
+      for (const field of Object.keys(patch)) {
+        if (patch[field] === undefined) current[field] = defaults[field];
+        else current[field] = patch[field];
+      }
+    },
+  });
+
+  const before = (await call(fixture.byPath[API_PREFIX + '/config'])).json();
+  assert.deepEqual(before.overridden, ['nice', 'scanMinutes'], '兩個被改過的欄位（排序）');
+
+  const reset = await call(fixture.byPath[API_PREFIX + '/config'], {
+    method: 'POST',
+    url: API_PREFIX + '/config',
+    body: JSON.stringify({ reset: ['scanMinutes', 'nice'] }),
+  });
+  assert.equal(reset.status, 200);
+  assert.deepEqual(written, [{ scanMinutes: undefined, nice: undefined }], 'undefined＝unset（沿用既有那條路徑）');
+  assert.deepEqual(reset.json().reset, ['scanMinutes', 'nice'], '回應說得出重置了哪些欄位');
+
+  const after = (await call(fixture.byPath[API_PREFIX + '/config'])).json();
+  assert.deepEqual(after.overridden, [], '重置後不再是被覆寫的欄位');
+});
+
+test('WS12：{"reset": true} 對所有可寫欄位發 unset', async function () {
+  const written = [];
+  const fixture = makeFixture({
+    configValues: function () { return Object.assign({}, defaultConfigValues(), { nice: 0 }); },
+    updateConfig: async function (patch) { written.push(patch); },
+  });
+  const response = await call(fixture.byPath[API_PREFIX + '/config'], {
+    method: 'POST',
+    url: API_PREFIX + '/config',
+    body: JSON.stringify({ reset: true }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal(written.length, 1);
+  assert.deepEqual(Object.keys(written[0]).sort(), CONFIG_FIELDS.slice().sort(), '每一個可寫欄位都要被重置');
+  for (const field of CONFIG_FIELDS) {
+    assert.equal(written[0][field], undefined, field + ' 必須是 undefined（＝unset）');
+  }
+  assert.deepEqual(response.json().reset, CONFIG_FIELDS, '回應列出全部欄位');
+});
+
+test('WS12：reset 陣列裡的未知欄位名進 unknown；reset 型別不對回 400', async function () {
+  const written = [];
+  const fixture = makeFixture({
+    configValues: function () { return defaultConfigValues(); },
+    updateConfig: async function (patch) { written.push(patch); },
+  });
+
+  const mixed = await call(fixture.byPath[API_PREFIX + '/config'], {
+    method: 'POST',
+    url: API_PREFIX + '/config',
+    body: JSON.stringify({ reset: ['nope'], scanMinutes: 10 }),
+  });
+  assert.equal(mixed.status, 200, '已知鍵照常寫入，不因為 reset 裡有未知鍵就整批拒絕');
+  assert.deepEqual(mixed.json().unknown, ['nope'], '未知欄位名不得被靜默忽略');
+  assert.deepEqual(written, [{ scanMinutes: 10 }]);
+
+  const bad = await call(fixture.byPath[API_PREFIX + '/config'], {
+    method: 'POST',
+    url: API_PREFIX + '/config',
+    body: JSON.stringify({ reset: 'all' }),
+  });
+  assert.equal(bad.status, 400);
+  assert.match(bad.json().error, /reset 必須是 true/);
+  assert.equal(written.length, 1, '型別錯誤時不得寫入');
+
+  // reset: false 是「不要重置」，不是錯誤。
+  const noop = await call(fixture.byPath[API_PREFIX + '/config'], {
+    method: 'POST',
+    url: API_PREFIX + '/config',
+    body: JSON.stringify({ reset: false, mode: 'fast' }),
+  });
+  assert.equal(noop.status, 200);
+  assert.deepEqual(noop.json().reset, []);
+  assert.deepEqual(written[1], { mode: 'fast' });
+});
+
+test('WS12：同一欄位同時 reset 與賦值時，賦值勝出（只發一個 set）', async function () {
+  const written = [];
+  const fixture = makeFixture({
+    configValues: function () { return defaultConfigValues(); },
+    updateConfig: async function (patch) { written.push(patch); },
+  });
+  const response = await call(fixture.byPath[API_PREFIX + '/config'], {
+    method: 'POST',
+    url: API_PREFIX + '/config',
+    body: JSON.stringify({ reset: ['scanMinutes'], scanMinutes: 10 }),
+  });
+  assert.equal(response.status, 200);
+  // 「先 reset 再 set」的結果就是賦值勝出：同一個路徑上 unset 立刻被覆蓋，
+  // 送兩個 op 只是多一次往返，語意完全一樣。
+  assert.deepEqual(written, [{ scanMinutes: 10 }]);
+  assert.deepEqual(response.json().reset, ['scanMinutes'], '它確實被列進 reset，只是值由賦值決定');
 });

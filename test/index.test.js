@@ -22,6 +22,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, dshHomeDir, inject, name } from '../lib/index.js';
 import { API_PREFIX, LOG_FILE_NAME, PLUGIN_ID, STATE_DIR_NAME } from '../lib/constants.js';
+import { CONFIG_FIELDS, defaultConfigValues } from '../lib/config.js';
 import { fakeProject, installFakeCbm } from './helpers/fake-cbm.js';
 import { makeTempDir, waitFor } from './helpers/env.js';
 import { makeExchange } from './helpers/http.js';
@@ -479,4 +480,93 @@ test('卸載後：路由被收回，且 keeper 不再接受新的工作', async 
   await new Promise(function (resolve) { setTimeout(resolve, 300); });
   const scansAfter = ((await readLog(mounted.logPath)).match(/msg=scan\.done/g) ?? []).length;
   assert.equal(scansAfter, scansBefore, '卸載後不得再產生掃描');
+});
+
+// ---------------------------------------------------------------------------
+// WS12：重置功能（op 層——這裡才是真的把 undefined 映射成 unset 的地方）
+// ---------------------------------------------------------------------------
+
+test('WS12：POST /config {"reset": true} 對所有可寫欄位發 unset op', async function (t) {
+  const mounted = await mount(t, { withSettings: true });
+  await waitForFirstScan(mounted);
+
+  const response = await mounted.call('/config', {
+    method: 'POST',
+    body: JSON.stringify({ reset: true }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.json().ok, true);
+  assert.equal(mounted.settings.mutateCalls.length, 1);
+  const call = mounted.settings.mutateCalls[0];
+  assert.equal(call.namespace, PLUGIN_ID);
+  assert.equal(call.ops.length, CONFIG_FIELDS.length, '每一個可寫欄位都要被 unset');
+  for (const op of call.ops) {
+    assert.equal(op.op, 'unset', '恢復預設＝unset（清掉覆寫、落回 schema 的 default）');
+    assert.equal(op.path.length, 1);
+    assert.equal('value' in op, false, 'unset 不帶值');
+  }
+  assert.deepEqual(call.ops.map(function (op) { return op.path[0]; }), CONFIG_FIELDS);
+  // 回應不得把 reset 這個指令鍵本身當成未知欄位回報。
+  assert.deepEqual(response.json().unknown, []);
+  assert.deepEqual(response.json().reset, CONFIG_FIELDS);
+
+  await mounted.dispose();
+});
+
+test('WS12：POST /config {"reset": ["dirtySettleSeconds"]} 只 unset 那一個欄位', async function (t) {
+  const mounted = await mount(t, { withSettings: true });
+  await waitForFirstScan(mounted);
+
+  const response = await mounted.call('/config', {
+    method: 'POST',
+    body: JSON.stringify({ reset: ['dirtySettleSeconds'] }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(mounted.settings.mutateCalls[0].ops, [
+    { op: 'unset', path: ['dirtySettleSeconds'] },
+  ]);
+  assert.deepEqual(response.json().reset, ['dirtySettleSeconds']);
+
+  await mounted.dispose();
+});
+
+test('WS12：reset 與賦值同時出現時，所有 unset 都排在 set 之前', async function (t) {
+  const mounted = await mount(t, { withSettings: true });
+  await waitForFirstScan(mounted);
+
+  const response = await mounted.call('/config', {
+    method: 'POST',
+    body: JSON.stringify({ reset: ['nice'], scanMinutes: 10 }),
+  });
+
+  assert.equal(response.status, 200);
+  // 順序語意：先 reset（unset），再套用一般賦值（set）。ops 是依序套用的，
+  // 所以 unset 必須全部排在前面。
+  assert.deepEqual(mounted.settings.mutateCalls[0].ops, [
+    { op: 'unset', path: ['nice'] },
+    { op: 'set', path: ['scanMinutes'], value: 10 },
+  ]);
+  assert.deepEqual(response.json().unknown, []);
+
+  await mounted.dispose();
+});
+
+test('WS12：GET /config 在真插件入口上就帶 defaults 與 overridden', async function (t) {
+  const mounted = await mount(t);
+  await waitForFirstScan(mounted);
+
+  const payload = (await mounted.call('/config')).json();
+  assert.deepEqual(payload.defaults, defaultConfigValues(), 'defaults 就是可寫形狀的預設值');
+  assert.equal(payload.defaults.dirtySettleSeconds, 90);
+
+  // mount 的預設 config 手動開了一堆欄位 → overridden 必須誠實列出來。
+  assert.equal(Array.isArray(payload.overridden), true);
+  assert.equal(payload.overridden.includes('cliPath'), true, 'cliPath 被測試設定覆寫過');
+  assert.equal(payload.overridden.includes('enabled'), true, 'enabled=false 與預設 true 不同');
+  assert.equal(payload.overridden.includes('dirtySettleSeconds'), false, '沒被改過的欄位不該出現');
+  assert.deepEqual(payload.overridden.slice().sort(), payload.overridden, '必須排序');
+
+  await mounted.dispose();
 });

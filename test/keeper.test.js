@@ -244,7 +244,9 @@ test('FR-3：HEAD 相同但工作樹 dirty 時，includeDirty 決定要不要重
     projects: [fakeProject({ name: 'dirty', rootPath: root, graphHead: '3449ba2' })],
     sha: { [root]: '3449ba2' },
     facts: { dirty: true },
-    config: { includeDirty: true },
+    // 這一條驗的是「關掉 settle 視窗時，一次存檔換一次重建」的舊行為
+    // （WS12 把預設改成 90 之後，預設值不再等於這個行為）。
+    config: { includeDirty: true, dirtySettleSeconds: 0 },
   });
   await included.keeper.start();
   const strict = included.keeper.list()[0];
@@ -289,7 +291,8 @@ test('H1：dirty 專案在最後一次索引之後有存檔活動時，仍會排
     projects: [fakeProject({ name: 'active-dirty', rootPath: root, graphHead: '3449ba2' })],
     sha: { [root]: '3449ba2' },
     facts: { dirty: true },
-    config: { includeDirty: true },
+    // settle 視窗關閉（0）：這條驗的是「存檔立刻換一次重建」的舊行為。
+    config: { includeDirty: true, dirtySettleSeconds: 0 },
   });
 
   await made.keeper.start();
@@ -1620,8 +1623,10 @@ test('WS7：新安裝、統計全 0 時絕不出現 dirty-chase 警告（跑幾�
     projects: [fakeProject({ name: 'fresh', rootPath: root, graphHead: '3449ba2' })],
     sha: { [root]: '3449ba2' },
     facts: { dirty: true },
-    // 預設值：dirtySettleSeconds=0、includeDirty=true——正是警告的適用對象，
-    // 但什麼都還沒發生，所以不該出聲。
+    // 明確關掉 settle 視窗（0）＝正是警告的適用對象，但什麼都還沒發生，
+    // 所以不該出聲。用 0 而不是預設值，這條測試才驗得到「有沒有證據」而不是
+    // 「欄位填了沒」。
+    config: { includeDirty: true, dirtySettleSeconds: 0 },
   });
 
   await made.keeper.start();
@@ -1664,6 +1669,7 @@ test('WS7：門檻（3 次且佔一半以上）與訊息內容；掃描會重算
     label: 'ws7-threshold',
     projects: [fakeProject({ name: 'threshold', rootPath: root, graphHead: '3449ba2' })],
     sha: { [root]: '3449ba2' },
+    config: { dirtySettleSeconds: 0 },
   });
   const keeper = made.keeper;
 
@@ -1715,6 +1721,7 @@ test('WS7：數字滑出 24 小時視窗後，警告跟著消失', async functio
     label: 'ws7-window-slide',
     projects: [fakeProject({ name: 'window', rootPath: root, graphHead: '3449ba2' })],
     sha: { [root]: '3449ba2' },
+    config: { dirtySettleSeconds: 0 },
   });
   const keeper = made.keeper;
   const past = Date.now() - 25 * 60 * 60 * 1000;
@@ -1743,7 +1750,7 @@ test('WS7：真的發生 3 次被中止的重建後，警告自動出現（不�
     label: 'ws7-real-chase',
     projects: [fakeProject({ name: 'chase', rootPath: root, graphHead: '3449ba2' })],
     sha: { [root]: '3449ba2' },
-    config: { autoRebuild: false, rebuildCooldownSeconds: 0 },
+    config: { autoRebuild: false, rebuildCooldownSeconds: 0, dirtySettleSeconds: 0 },
   });
   await made.keeper.start();
   assert.equal(dirtyChaseOf(made.keeper), undefined, '還沒發生任何事');
@@ -1778,6 +1785,7 @@ test('WS7：警告順序——dirty-chase 排在 auto-index-on 之後、純資�
     label: 'ws7-warning-order',
     projects: [fakeProject({ name: 'order', rootPath: root, graphHead: '3449ba2' })],
     sha: { [root]: '3449ba2' },
+    config: { dirtySettleSeconds: 0 },
     // 讓上游設定同時觸發另外兩條警告，才看得出順序。
     cbm: { config: { auto_index: 'true', auto_watch: 'true', watcher_enabled: 'true' } },
   });
@@ -1796,6 +1804,7 @@ test('WS7：data 與 message 說同一件事，且百分比是四捨五入（6/7
     label: 'ws7-data-rounding',
     projects: [fakeProject({ name: 'rounding', rootPath: root, graphHead: '3449ba2' })],
     sha: { [root]: '3449ba2' },
+    config: { dirtySettleSeconds: 0 },
   });
   made.keeper.stats.count('rebuildsAborted', 6);
   made.keeper.stats.count('rebuildsSucceeded', 1);

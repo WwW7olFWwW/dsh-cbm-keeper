@@ -115,7 +115,7 @@ codebase-memory-mcp config set auto_index false
 
 ## 設定
 
-18 個可調欄位與 7 條 REST 路由：[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)。欄位改完立刻生效，不用重啟。
+18 個可調欄位與 7 條 REST 路由：[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)。欄位改完立刻生效，不用重啟；改壞了可以一鍵恢復預設（只清掉你改過的那些）。
 
 狀態檔在 `~/.dsh/codebase-watcher/state.json`，日誌在 `~/.dsh/codebase-watcher/keeper.log`；唯讀查詢：`curl -s http://127.0.0.1:3080/api/codebase-watcher/state`。
 

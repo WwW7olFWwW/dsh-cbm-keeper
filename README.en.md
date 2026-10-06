@@ -115,7 +115,7 @@ The full comparison is in section 7 of [`docs/REQUIREMENTS.md`](docs/REQUIREMENT
 
 ## Configuration
 
-18 tunable fields and 7 REST routes: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md). Field changes take effect immediately, no restart.
+18 tunable fields and 7 REST routes: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md). Field changes take effect immediately, no restart, and defaults are one click away (only the fields you changed are cleared).
 
 State lives in `~/.dsh/codebase-watcher/state.json` and the log in `~/.dsh/codebase-watcher/keeper.log`. Read-only query: `curl -s http://127.0.0.1:3080/api/codebase-watcher/state`.
 

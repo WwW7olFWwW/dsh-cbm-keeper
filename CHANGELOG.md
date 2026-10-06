@@ -5,6 +5,55 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-07
+
+> 這一版把「讓使用者自行決定」補成完整的三件套：**選項 ＋ 預設值 ＋ 重置**。
+> 0.4.0 只做了第一件——`dirtySettleSeconds` 存在，但預設是 `0`，
+> 等於那個欄位出現與否對大多數人沒有差別。這一版把它預設成**實測有效的那個值**。
+
+### Changed
+
+- **`dirtySettleSeconds` 的預設值由 `0` 改為 `90`**（行為變更）。升級之後，有未提交變更的
+  專案不再「一有活動就重建」，改成**靜默 90 秒後重建一次**——也就是 0.4.0 那份 A/B 實測裡
+  完全消除追逐的那個值（編輯期間的重建 10 → 0 次、被中止 10 → 0 次，停手後仍追上）。
+  **不受影響的**：真正的 HEAD 落後、人工與強制重建、崩潰恢復，全部維持即時。
+- `0` **仍是合法且有意義的值**：它關閉 settle 視窗、回到「一有活動就重建」，也就是 0.3.0 的
+  行為。它同時是 `dirty-chase-detected` 警告的觸發條件——換了預設之後，那條警告的語意
+  自然變成「**你主動選擇關掉**、而且真的觀察到追逐時才會提醒」。
+- README 的設定一節補上「改壞了可以一鍵恢復預設（只清掉你改過的那些）」；
+  [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) 的 `dirtySettleSeconds` 一列與
+  「什麼情況下該調它」一段重寫（重點從「建議你去開它」變成「什麼情況下你該把它調掉」）。
+
+### Added
+
+- **設定重置**（單欄與全部兩種）：
+  - `POST /config` 新增可選的 `reset` 鍵：`{"reset": true}` 恢復全部欄位、`{"reset": ["欄位名"]}`
+    只恢復指定欄位；可與一般賦值同時出現（**先 reset 再 set**，所以同一欄位同時出現時賦值勝出）。
+    未知欄位名照既有慣例列進回應的 `unknown[]`。實作走既有的 `{op:'unset'}` 路徑——清掉覆寫讓
+    欄位落回 schema 的 `default()`，與宿主 `ConfigFormController.unset()` 是同一套語意。
+  - `GET /config` 新增 `defaults`（與 `config` **同形狀**的預設值）與 `overridden`
+    （目前值 ≠ 預設值的欄位名，排序）。`defaults` 走與 `config` 完全相同的正規化路徑，
+    型別不會分岔。
+  - 設定頁卡片新增「**設定**」區塊（成效 → 設定 → CLI 與上游）：**預設收起**，收起時也顯示
+    「你改過 N 個欄位」徽章；展開後逐列顯示欄位名、目前值、被覆寫者的預設值，以及
+    **單欄「恢復預設」**；頂端一顆**「全部恢復預設」**（行內兩段式確認，沒有覆寫時為 disabled）。
+    未覆寫的欄位只標「（預設）」、不給按鈕（不給按了沒事的死按鈕）。
+    舊 host 沒有 `defaults`／`overridden` 時整塊不渲染。
+  - 文案刻意寫成「恢復**預設值**」而不是「原廠重設」——它只清掉你改過的欄位，不動別的。
+
+### Fixed
+
+- **成效區塊的數字會被省略號吃掉**：窄欄下「失敗 7（其中 7 次被中止）」被截成
+  「失敗 7（其中 7 次…」，而那塊存在的理由正是那些數字。已讓欄位支援換行不省略。
+- **`reset` 這個指令鍵本身一度被當成未知欄位回報**（`unknown: ['nope','reset']`），
+  等於每一次重置都會回報一個不存在的問題、UI 會顯示假警告。已排除。
+
+### 驗證
+
+- 單元測試 **204 → 214**，`node --test test/*.test.js` 全綠。
+- `tools/verify-keeper.mjs` 23/23；`tools/verify-client.mjs` **212 → 242**。
+- `node tools/bench-dirty-chase.mjs --assert --settle 90` 斷言通過——改預設沒有動到 settle 行為本身。
+
 ## [0.4.0] - 2026-10-07
 
 > 這一版由一次四維度審查（程式碼品質／效能／UI-UX／產品市場）驅動，共 8 條工作流。
@@ -231,7 +280,8 @@
 - 單元測試 115 項，`node --test test/*.test.js` 全綠，不需要真的索引；CI 在 Node 20／22／24
   與「有／沒有 chokidar」六種組合上跑，且在沒有安裝 DSH 的機器上也能全綠（解析路徑用夾具驗證）。
 
-[Unreleased]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.5.0
 [0.4.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.4.0
 [0.3.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.3.0
 [0.2.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.2.0

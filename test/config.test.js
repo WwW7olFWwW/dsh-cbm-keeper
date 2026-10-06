@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   CONFIG_DEFAULTS,
   CONFIG_FIELDS,
+  defaultConfigValues,
   isProjectSelected,
   profilePackageRoots,
   readConfigValues,
@@ -360,14 +361,34 @@ test('unknownConfigKeys：列出不在 CONFIG_FIELDS 的鍵', function () {
   assert.deepEqual(unknownConfigKeys({ scanMs: 300000, extensions: ['ts'] }), ['scanMs'], '`extensions` 是已知鍵（形狀不同），`scanMs` 才是未知');
 });
 
-test('resolveKeeperConfig：dirtySettleSeconds 產出 dirtySettleMs（C1，預設 0）', function () {
-  assert.equal(CONFIG_DEFAULTS.dirtySettleSeconds, 0, '預設 0＝維持現行行為');
-  assert.equal(resolveKeeperConfig(undefined).dirtySettleMs, 0);
+test('WS12：dirtySettleSeconds 的預設是 90（兩條路徑都要驗），0 仍是合法值', function () {
+  // 兩條路徑：常數本身，以及執行期正規化（resolveKeeperConfig 是沒有 settings
+  // 服務的部署唯一會跑到的路徑）。
+  assert.equal(CONFIG_DEFAULTS.dirtySettleSeconds, 90, '使用者拍板的預設值');
+  assert.equal(resolveKeeperConfig({}).dirtySettleMs, 90000, 'resolveKeeperConfig({}) 也是 90 秒');
+  assert.equal(resolveKeeperConfig(undefined).dirtySettleMs, 90000);
+
+  // 0 仍是合法且有意義的值＝關閉 settle 視窗（也正是 dirty-chase-detected 的觸發條件）。
+  assert.equal(resolveKeeperConfig({ dirtySettleSeconds: 0 }).dirtySettleMs, 0);
   assert.equal(resolveKeeperConfig({ dirtySettleSeconds: 90 }).dirtySettleMs, 90000);
-  // 界線與 schema 一致：0–3600 秒。
+  // 界線與 schema 一致：0–3600 秒（下限刻意是 0，不是 1）。
   assert.equal(resolveKeeperConfig({ dirtySettleSeconds: -5 }).dirtySettleMs, 0);
   assert.equal(resolveKeeperConfig({ dirtySettleSeconds: 99999 }).dirtySettleMs, 3600000);
-  assert.equal(resolveKeeperConfig({ dirtySettleSeconds: 'soon' }).dirtySettleMs, 0, '非數字回預設');
-  assert.equal(resolveKeeperConfig({ dirtySettleSeconds: '' }).dirtySettleMs, 0, '空字串對數值欄位＝沒填');
+  assert.equal(resolveKeeperConfig({ dirtySettleSeconds: 'soon' }).dirtySettleMs, 90000, '非數字回預設');
+  assert.equal(resolveKeeperConfig({ dirtySettleSeconds: '' }).dirtySettleMs, 90000, '空字串對數值欄位＝沒填');
   assert.equal(CONFIG_FIELDS.includes('dirtySettleSeconds'), true, 'POST /config 與 schema 共用同一組欄位名');
+});
+
+test('WS12：defaultConfigValues 與可寫 config 同鍵集、同型別', function () {
+  const defaults = defaultConfigValues();
+  const values = readConfigValues(undefined);
+  assert.deepEqual(Object.keys(defaults), CONFIG_FIELDS, '鍵集＝可寫欄位（順序也照 schema）');
+  assert.deepEqual(defaults, values, '就是 readConfigValues(undefined)：與 config 走同一條正規化路徑');
+  for (const field of CONFIG_FIELDS) {
+    assert.equal(typeof defaults[field], typeof CONFIG_DEFAULTS[field], field + ' 的型別必須與 CONFIG_DEFAULTS 一致');
+  }
+  // 清單類欄位在這裡必須是**字串**（與 GET /config 的 config 同型別），不是陣列。
+  assert.equal(typeof defaults.extensions, 'string');
+  assert.equal(typeof defaults.excludes, 'string');
+  assert.equal(defaults.dirtySettleSeconds, 90);
 });
