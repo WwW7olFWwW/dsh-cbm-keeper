@@ -30,7 +30,7 @@ dsh plugin --profile web add https://github.com/WwW7olFWwW/dsh-codebase-watcher/
 
 A "CBM 圖譜" [CBM Graph] card then appears under Settings; reload the page once if it does not.
 
-![Settings → "CBM 圖譜": each project's graph HEAD against its worktree HEAD, stale ones first](docs/assets/cbm-card-en.png)
+![Settings → "CBM 圖譜": the rebuild payoff since this start on top, then each project's graph HEAD against its worktree HEAD, stale ones first](docs/assets/cbm-card-en.png)
 
 ### How to confirm it worked
 
@@ -66,6 +66,7 @@ Both are settings-page fields and take effect immediately.
 - **Staleness detection**: the graph's `Branch.head_sha` against `git rev-parse HEAD`, giving an exact `behindBy`. With no `Branch` node it falls back to `indexed_at` and the database mtime; when the evidence is insufficient it reports "cannot be determined".
 - **Conditional rebuild**: only stale projects are queued. When the graph already matches HEAD, `POST /rebuild` returns `queued: 0` and no indexing work happens.
 - **Visible payoff**: the card carries a payoff block showing rebuilds queued / succeeded / failed **since this process started** (failures broken out by how many were aborted), how many rebuilds the cooldown and gate skipped, and cumulative rebuild time.
+- **Sidebar indicator**: visible without opening Settings — a warn dot when projects are stale, an error dot when a rebuild or a watcher has failed; **nothing is rendered at all when everything is fresh** (quiet is the default). It is informational only, not clickable.
 
 Rebuilds run as a child process, `codebase-memory-mcp cli index_repository`, which sidesteps the 60-second cap on the MCP tool. Every adopted project gets file watching with debounce, so a save is picked up on its own; without chokidar it falls back to `node:fs.watch`.
 

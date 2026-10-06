@@ -30,7 +30,7 @@ dsh plugin --profile web add https://github.com/WwW7olFWwW/dsh-codebase-watcher/
 
 設定頁接著會多一張「CBM 圖譜」卡片；沒看到就重整一次頁面。
 
-![設定 →「CBM 圖譜」：每個專案的圖譜 HEAD 與工作樹 HEAD 逐項比對，落後的排在最前面](docs/assets/cbm-card.png)
+![設定 →「CBM 圖譜」：最上面是本次啟動以來的重建成效，下面是每個專案的圖譜 HEAD 與工作樹 HEAD 逐項比對，落後的排在最前面](docs/assets/cbm-card.png)
 
 ### 怎麼確認裝成功
 
@@ -66,6 +66,7 @@ codebase-memory-mcp config set auto_index false
 - **落後判定**：圖譜的 `Branch.head_sha` 對上 `git rev-parse HEAD`，給出精確的 `behindBy`；沒有 `Branch` 節點時退用 `indexed_at` 與資料庫 mtime，證據不足就回報「無法判定」。
 - **條件式重建**：只排入落後的專案；圖譜已經對上 HEAD 時，`POST /rebuild` 回 `queued: 0`，不產生任何索引工作。
 - **成效看得見**：卡片有一塊「成效」，顯示**本次啟動以來**的重建排入／成功／失敗（失敗另標其中幾次是被中止）、冷卻與閘門省下的重建次數、以及累計重建耗時。
+- **側邊欄常駐指示**：不開設定頁也看得到——有落後專案時一個 warn 圓點、有重建或監看失敗時一個 error 圓點；**全部新鮮時完全不渲染**（安靜是預設）。它是純指示，不可點擊。
 
 重建是以子行程呼叫 `codebase-memory-mcp cli index_repository`，繞過 MCP 工具那個 60 秒上限。每個已納管的專案都有檔案監看與防抖，存檔後自動追上；chokidar 不在時退回 `node:fs.watch`。
 
