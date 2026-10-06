@@ -43,7 +43,7 @@ The settings card and the REST control plane share one source, so every card act
 
 | Plugin | DSH | Codebase Memory |
 |---|---|---|
-| `0.2.x` | `>=0.2.0-rc.2` (tested on 0.2.0-rc.2; declared via `engines.dsh`) | `codebase-memory-mcp@0.11.0` (versions outside the list turn into a card warning) |
+| `0.3.x` | `>=0.2.0-rc.2` (tested on 0.2.0-rc.2; declared via `engines.dsh`) | `codebase-memory-mcp@0.11.0` (versions outside the list turn into a card warning) |
 
 ## Configuration
 
