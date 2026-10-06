@@ -104,8 +104,17 @@
 
 ### 驗證
 
-- 單元測試 **139 → 184**，`node --test test/*.test.js` 全綠。
+- 單元測試 **139 → 198**，`node --test test/*.test.js` 全綠。
 - `tools/verify-keeper.mjs` 23/23；`tools/verify-client.mjs` **30 → 212**。
+- 新增 `test/index.test.js`：**插件入口與控制面先前完全沒有測試**，而它正是「UI 依賴的
+  對外介面」真正被組出來的地方。這一支用真的 `apply()`，只換掉三個邊界（`DSH_HOME`
+  指向暫存目錄、`cliPath` 指向假 CLI、`graphUrl` 指向必然拒絕連線的埠），其餘路徑解析、
+  狀態機、佇列、日誌、生命週期順序都是真的在跑。它固定了：七條路由的註冊、生命週期順序
+  （`plugin.start` 必須排在 `plugin.stop` 之前）、未宣告的設定鍵會具名警告、`GET /state`
+  上卡片依賴的每一個欄位、`?log=0` 真的是 0 筆、`POST /config` 的白名單與命名空間、
+  沒有 settings 服務時拒絕寫入、不存在的 id 回 404，以及**卸載後路由被收回且不再產生掃描**。
+  另有一條把狀態目錄建成普通檔案，逼出 `logFileError` / `stateLoadError` 的**真實錯誤
+  路徑**——否則那兩個欄位只存在於原始碼，線上永遠不會有人看到。
 - `node tools/bench-dirty-chase.mjs`（`npm run bench`）可重跑，上表即為它的輸出；
   `--assert` 模式已加進 CI，會擋住「編輯期間重建 > 1 次、或仍有重建被中止、或停手後沒追上」的回歸。
 - CI 新增獨立的 `bench` job。`verify-keeper`／`verify-client` **沒有**進 CI——前者需要真的

@@ -75,7 +75,7 @@ The settings card and the REST control plane share one source, so every card act
 
 | Item | Result |
 |---|---|
-| Unit tests | `node --test test/*.test.js` → **184 tests / 184 pass / 0 fail** (the count only grows) |
+| Unit tests | `node --test test/*.test.js` → **198 tests / 198 pass / 0 fail** (the count only grows) |
 | Host half against the real CBM CLI | `node tools/verify-keeper.mjs` → **23/23** |
 | Client rendering (fed the real `/state`) | `node tools/verify-client.mjs` → **212/212** |
 
@@ -136,7 +136,7 @@ Substitute your own profile name in the first line too. The last line clears a k
 ## Development
 
 ```sh
-node --test test/*.test.js   # 184 unit tests, no real index needed
+node --test test/*.test.js   # 198 unit tests, no real index needed
 ```
 
 [Architecture](docs/ARCHITECTURE.md) ｜ [Verification status](docs/DEVELOPMENT.md) ｜ [Requirements](docs/REQUIREMENTS.md) ｜ [Publishing](docs/PUBLISHING.md) ｜ [Contributing](CONTRIBUTING.md) ｜ [Changelog](CHANGELOG.md) ｜ [Issues](https://github.com/WwW7olFWwW/dsh-codebase-watcher/issues)

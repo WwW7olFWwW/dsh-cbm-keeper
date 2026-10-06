@@ -75,7 +75,7 @@ codebase-memory-mcp config set auto_index false
 
 | 項目 | 結果 |
 |---|---|
-| 單元測試 | `node --test test/*.test.js` → **184 tests / 184 pass / 0 fail**（數字只增不減） |
+| 單元測試 | `node --test test/*.test.js` → **198 tests / 198 pass / 0 fail**（數字只增不減） |
 | Host 半邊對真實 CBM CLI | `node tools/verify-keeper.mjs` → **23/23** |
 | 客戶端渲染（餵真實 `/state`） | `node tools/verify-client.mjs` → **212/212** |
 
@@ -136,7 +136,7 @@ rm -f ~/.dsh/profiles/web/node_modules/dsh-codebase-watcher
 ## 開發
 
 ```sh
-node --test test/*.test.js   # 184 項單元測試，不需要真的索引
+node --test test/*.test.js   # 198 項單元測試，不需要真的索引
 ```
 
 [架構](docs/ARCHITECTURE.md)｜[驗證現況](docs/DEVELOPMENT.md)｜[需求規格](docs/REQUIREMENTS.md)｜[發布清單](docs/PUBLISHING.md)｜[貢獻指南](CONTRIBUTING.md)｜[變更記錄](CHANGELOG.md)｜[問題回報](https://github.com/WwW7olFWwW/dsh-codebase-watcher/issues)
