@@ -60,11 +60,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      # 直接呼叫 package.json 的 script，不要在這裡再抄一份檔案清單：
+      # 兩份清單一定會漂移（實際上已經漂移過一次——加了 docs/assets/*.mjs 卻只改了
+      # package.json，於是截圖腳本在 CI 上沒被語法檢查到）。單一來源。
       - name: Parse every module
-        run: |
-          for f in lib/*.js test/*.js test/helpers/*.js tools/*.mjs; do
-            node --check "$f"
-          done
+        run: npm run test:syntax
       - name: package.json is valid and installable as a bundle
         run: |
           node -e "const p=require('./package.json'); if(p.private) throw new Error('package.json 仍是 private'); if(!p.dsh?.bundle?.patch) throw new Error('缺少 dsh.bundle.patch'); if(p.license!=='MIT') throw new Error('授權不是 MIT');"
+
+      # 發佈包會被當成 GitHub Release 的預建資產，市場安裝走的就是它。
+      # 2026-10-07 曾經因為 files 收了整個 docs/ 而讓它從 104 kB 漲到 672 kB——
+      # 其中 566 kB 是 README 用的截圖與開發腳本，安裝者永遠用不到。
+      # 這一條把它擋住，順便確保 README 的圖仍然是「repo 專屬資產」。
+      - name: Published tarball stays lean
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e "
+            const packed = JSON.parse(require('fs').readFileSync('pack.json', 'utf8'))[0];
+            const leaked = packed.files.filter((f) => f.path.startsWith('docs/assets/')).map((f) => f.path);
+            if (leaked.length > 0) throw new Error('docs/assets 不該進發佈包：' + leaked.join(', '));
+            if (packed.size > 200000) throw new Error('發佈包過大：' + packed.size + ' bytes（上限 200000）');
+            console.log('發佈包 ' + packed.size + ' bytes / ' + packed.entryCount + ' 檔，未含 docs/assets');
+          "

@@ -37,7 +37,7 @@
     "CONTRIBUTING.md",
     "SECURITY.md",
     "LICENSE",
-    "docs"
+    "docs/*.md"
   ],
   "scripts": {
     "test": "node --test test/*.test.js",

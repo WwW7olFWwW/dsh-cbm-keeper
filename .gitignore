@@ -13,6 +13,8 @@ codebase-watcher/
 *.log
 *.tgz
 *.tmp
+# `npm pack --dry-run --json` 的輸出（CI 的「發佈包是否精簡」那一關會產生）
+pack.json
 
 # 編輯器與作業系統
 .DS_Store

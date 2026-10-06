@@ -101,11 +101,25 @@
 - 清掉一批死碼（`PLUGIN_NAME`、`SETTINGS_SECTION_ID`、`isGitWorktree`、`__gitInternals`、
   `removeProject`、`writeTempFile`、keeper 未使用的兩個匯入），並以 `test/api-surface.test.js`
   守門，避免它們悄悄回來。
+- **發佈包從 672 kB 瘦回 124 kB**：`files` 原本收了整個 `docs/`，於是 README 用的兩張截圖
+  （566 kB）與開發用的截圖腳本（26 kB）全都進了發佈包——而**市場安裝走的就是這個預覽包**
+  （GitHub Release 資產＝`npm pack` 的產物），等於每個安裝者都要下載永遠用不到的圖。
+  改成 `docs/*.md`（保留全部文件、排除 `docs/assets/`）。README 的圖仍留在 repo，
+  GitHub 與 npm 的 README 呈現都不受影響。
+- **CI 的語法檢查不再抄一份檔案清單**：`ci.yml` 原本自己列 `lib/*.js test/*.js
+  test/helpers/*.js tools/*.mjs`，與 `package.json` 的 `test:syntax` 是兩份拷貝——而且已經
+  漂移過一次（加了 `docs/assets/*.mjs` 卻只改了 `package.json`，截圖腳本因此在 CI 上沒被
+  檢查到）。改為直接呼叫 `npm run test:syntax`，單一來源。
 
 ### 驗證
 
 - 單元測試 **139 → 198**，`node --test test/*.test.js` 全綠。
 - `tools/verify-keeper.mjs` 23/23；`tools/verify-client.mjs` **30 → 212**。
+- **發佈包實測可安裝可載入**：`npm pack` → 在乾淨目錄 `npm install` → `import` 得到
+  `Config, apply, dshHomeDir, inject, name` 五個匯出，`name === 'codebase-watcher'`（與
+  `cordis.patch.yml` 的 row id 一致），`cordis.patch.yml` 在包內，`./client` 入口可解析且
+  帶 `__ModuleLoader__` 註冊形狀。CI 新增一關守著「`docs/assets` 不得進發佈包、且發佈包
+  ≤ 200 kB」，並已實測該關卡會擋住這個回歸。
 - 新增 `test/index.test.js`：**插件入口與控制面先前完全沒有測試**，而它正是「UI 依賴的
   對外介面」真正被組出來的地方。這一支用真的 `apply()`，只換掉三個邊界（`DSH_HOME`
   指向暫存目錄、`cliPath` 指向假 CLI、`graphUrl` 指向必然拒絕連線的埠），其餘路徑解析、
