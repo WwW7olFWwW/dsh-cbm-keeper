@@ -5,6 +5,42 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-07
+
+> 這一版只修一個可發現性缺陷：設定區塊的說明**只說「用 DSH 的插件設定表單」，
+> 卻沒說那個表單在哪**。使用者實際回報了這件事——「那麼是要到哪里修改」。
+
+### Fixed
+
+- **設定區塊的說明現在指出確切位置**：改為「要改值請到側邊欄『插件』→ 本插件那一列的
+  設定，那裡由 DSH 依 schema 自動產生表單」。原本那句等於叫使用者去一個沒給座標的地方。
+  位置是查證來的、不是推測：線上 Config 條目為 `dsh-codebase-watcher`（patch id
+  `codebase-watcher`，`status: schema`），承載它的 slot 是 `plugins.row.config`，
+  官方描述寫明「the row on the bundle's page gains a configure control that opens the
+  entry's page」。英文文案本來就已寫對（`row under Plugins in the sidebar`），
+  這一版只是讓中文追上——重拍後英文那張**同尺寸、同位元組數**，即為此事的證據。
+- `docs/assets/capture-card.mjs` 兩個會**靜默失效**的缺陷：`parseArgs` 把布林旗標寫成
+  特例，導致新增的 `--only-config` 會吃掉下一個參數且完全沒作用（第一次「只裁設定區塊」
+  拍出來仍是整張卡）；展開後沒有重新量測，裁切高度停留在展開前的值而把卡片切掉。
+  另把探針視窗高度從寫死的 1000 改為 `--probe-height`（預設 1600）——側邊欄工作區一多，
+  底部那一列會被推出視窗，命中測試就點不到「设置」。
+
+### Changed
+
+- README 中英兩版各加一張**設定區塊展開**的截圖（`docs/assets/cbm-card-settings.png` /
+  `-settings-en.png`），放在「設定」一節；hero 維持收合狀態。展開後整張卡會多出 18 列、
+  在 GitHub 的欄寬下要滑好幾屏才看得到專案列，所以拆成兩張而不是塞進同一張。
+  圖上是**真機真值**：`overridden` 為空，所以 18 列全部標「（預設）」、沒有任何單欄
+  恢復鈕、「全部恢復預設」是停用的——沒有為了讓按鈕入鏡而改動使用者的設定。
+  hero 兩張**刻意不重拍**，理由是實證而非目測：探針顯示收合狀態下那句 hint
+  `hasHint: false`（根本不在 DOM 裡），hero 不可能拍到它。
+
+### 驗證
+
+- 單元測試 214/214；`tools/verify-client.mjs` 242/242——含一條**加強過的**斷言：
+  文案必須同時出現「插件」與「設定」，避免它再被改回模糊版本。
+- 獨立探針確認 GUI 語言仍為中文。
+
 ## [0.5.0] - 2026-10-07
 
 > 這一版把「讓使用者自行決定」補成完整的三件套：**選項 ＋ 預設值 ＋ 重置**。
@@ -280,7 +316,8 @@
 - 單元測試 115 項，`node --test test/*.test.js` 全綠，不需要真的索引；CI 在 Node 20／22／24
   與「有／沒有 chokidar」六種組合上跑，且在沒有安裝 DSH 的機器上也能全綠（解析路徑用夾具驗證）。
 
-[Unreleased]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.5.1
 [0.5.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.5.0
 [0.4.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.4.0
 [0.3.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.3.0

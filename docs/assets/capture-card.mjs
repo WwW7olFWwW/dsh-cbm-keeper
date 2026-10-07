@@ -21,6 +21,9 @@
  *   --browser <p>   Chrome 執行檔；預設抓 ~/.cache/ms-playwright 下的 chromium
  *   --keep-open     拍完不關瀏覽器（除錯用）
  *   --keep-lang     不還原介面語言（要把使用者的語言真的切成 --lang 時用）
+ *   --expand-config 先展開卡片上的「設定」區塊再拍（預設收起）
+ *   --only-config   只裁「設定」區塊，不拍整張卡
+ *   --probe-height  探針視窗高度，預設 1600（太矮會點不到側邊欄底部的「设置」）
  *
  * 前置：`dsh web` 正在跑，且本機已安裝 Playwright 的 chromium（只要執行檔，不需要 driver）。
  *
@@ -39,10 +42,14 @@ function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i];
-    if (key === '--keep-open') { out.keepOpen = true; continue; }
-    if (key === '--keep-lang') { out.keepLang = true; continue; }
     if (!key.startsWith('--')) continue;
-    out[key.slice(2)] = argv[i + 1];
+    // --only-config → onlyConfig：旗標名用 kebab，程式裡讀 camel。
+    const name = key.slice(2).replace(/-([a-z])/g, function (_m, ch) { return ch.toUpperCase(); });
+    const next = argv[i + 1];
+    // 沒有下一個參數、或下一個又是 --flag 時，這是一個布林旗標。
+    // （先前把布林旗標寫成特例，結果新增的旗標會默默吃掉下一個參數而完全沒作用。）
+    if (next === undefined || next.startsWith('--')) { out[name] = true; continue; }
+    out[name] = next;
     i += 1;
   }
   return out;
@@ -59,8 +66,15 @@ const WIDTH = Number(args.width || 1180);
 const SCALE = Number(args.scale || 2);
 const WANT_LANG = args.lang === 'en' ? 'en' : args.lang === 'zh' ? 'zh' : null;
 const KEEP_OPEN = args.keepOpen === true;
+/** 探針視窗高度。側邊欄工作區一多，底部那一列（記憶／設定）會被推出視窗，
+ *  findByText 的命中測試就點不到——1500 以上才穩。 */
+const PROBE_HEIGHT = Number(args.probeHeight || 1600);
 /** 保留切換後的語言，不還原（要把使用者的介面語言直接改成 --lang 時用）。 */
 const KEEP_LANG = args.keepLang === true;
+/** 先展開卡片上的「設定」區塊再拍（該區塊預設收起，價值在展開後）。 */
+const EXPAND_CONFIG = args.expandConfig === true;
+/** 只裁「設定」區塊本身，不拍整張卡。 */
+const ONLY_CONFIG = args.onlyConfig === true;
 
 /** 卡片本身有 i18n 字典（lib/client.js 的 zh／en），標題就是最好的就緒訊號。 */
 const PANEL_TITLE = { zh: 'Codebase Memory 圖譜新鮮度', en: 'Codebase Memory graph freshness' };
@@ -69,6 +83,11 @@ const SETTINGS_LABEL = { zh: '设置', en: 'Settings' };
 const SKIP_TOUR_LABEL = { zh: '跳过向导', en: 'Skip tour' };
 const LANG_SELECTOR = { zh: '中文', en: 'English' };
 const GENERAL_LABEL = { zh: '通用设置', en: 'General' };
+/** 卡片上「設定」區塊的展開鈕；展開後文案會變。 */
+/** 展開後一定會出現的欄位名，用來確認展開真的完成了。 */
+const CONFIG_MARKER = 'dirtySettleSeconds';
+const SHOW_CONFIG_LABEL = { zh: '顯示設定', en: 'Show settings' };
+const HIDE_CONFIG_LABEL = { zh: '收起設定', en: 'Hide settings' };
 
 /* ------------------------------------------------------- Chrome 與 CDP 客戶端 */
 
@@ -236,7 +255,7 @@ const findScrollPaneWith = function (title) {
  * @returns {Promise<boolean>} 是否真的關掉了。
  */
 async function dismissTour(page) {
-  for (let attempt = 0; attempt < 24; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     for (const label of [SKIP_TOUR_LABEL.zh, SKIP_TOUR_LABEL.en]) {
       if (await page.click(findByText, { text: label, exact: true })) {
         console.log('關閉嚮導：' + label);
@@ -382,7 +401,7 @@ try {
   pageRef = page;
   await page.send('Page.enable');
   await page.send('Runtime.enable');
-  await page.send('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: 1000, deviceScaleFactor: SCALE, mobile: false });
+  await page.send('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: PROBE_HEIGHT, deviceScaleFactor: SCALE, mobile: false });
 
   await page.send('Page.navigate', { url: BASE + '/?token=' + encodeURIComponent(token) });
 
@@ -497,12 +516,14 @@ try {
   });
   await delay(500);
 
-  // 改變視窗大小會讓框架重繪、把上面解開的固定高度放回去，所以量測前再解一次。
-  await page.waitFor('卡片回到畫面', function (title) {
-    return document.body.innerText.indexOf(title) !== -1;
-  }, PANEL_TITLE[lang], 20000);
-
-  const box = await page.evaluate(function (title) {
+  // 量一次卡片、把視窗調到剛好裝得下。展開「設定」區塊之後卡片會長高，
+  // 所以整段包成函式，展開後再跑一次——不然裁切高度會是展開前的舊值。
+  const fitToCard = async function () {
+    // 改變視窗大小會讓框架重繪、把上面解開的固定高度放回去，所以量測前再解一次。
+    await page.waitFor('卡片回到畫面', function (title) {
+      return document.body.innerText.indexOf(title) !== -1;
+    }, PANEL_TITLE[lang], 20000);
+    const measured = await page.evaluate(function (title) {
     const collect = function (requireScroller) {
       let best = null;
       for (const node of document.querySelectorAll('div')) {
@@ -532,12 +553,49 @@ try {
     const rect = best.node.getBoundingClientRect();
     return { x: rect.x, y: rect.y, w: rect.width, h: best.node.scrollHeight };
   }, PANEL_TITLE[lang]);
+    if (!measured) return null;
+    await page.send('Emulation.setDeviceMetricsOverride', {
+      width: WIDTH, height: Math.ceil(measured.y + measured.h + 24), deviceScaleFactor: SCALE, mobile: false,
+    });
+    await delay(400);
+    return measured;
+  };
+
+  let box = await fitToCard();
   if (!box) throw new Error('量不到卡片尺寸');
 
-  await page.send('Emulation.setDeviceMetricsOverride', {
-    width: WIDTH, height: Math.ceil(box.y + box.h + 24), deviceScaleFactor: SCALE, mobile: false,
-  });
-  await delay(400);
+  // 7b) 卡片上的「設定」區塊預設收起；要拍展開狀態就先按展開，等欄位真的出現，再重新量一次。
+  if (EXPAND_CONFIG || ONLY_CONFIG) {
+    if (!(await page.click(findByText, { text: SHOW_CONFIG_LABEL[lang], exact: true }))) {
+      console.log('  找不到「' + SHOW_CONFIG_LABEL[lang] + '」，可能已經展開');
+    }
+    await page.waitFor('設定欄位列', function (marker) {
+      return document.body.innerText.indexOf(marker) !== -1;
+    }, CONFIG_MARKER, 15000);
+    await delay(600);
+    box = await fitToCard();
+    if (!box) throw new Error('展開後量不到卡片尺寸');
+  }
+
+  // 7c) 只裁「設定」區塊：同時含展開鈕與欄位名的最小容器。
+  if (ONLY_CONFIG) {
+    const block = await page.evaluate(function (payload) {
+      let best = null;
+      for (const node of document.querySelectorAll('div, section')) {
+        const text = node.innerText || '';
+        if (text.indexOf(payload.marker) === -1) continue;
+        if (text.indexOf(payload.button) === -1) continue;
+        const rect = node.getBoundingClientRect();
+        if (rect.width < 300 || rect.height < 80) continue;
+        const area = rect.width * rect.height;
+        if (!best || area < best.area) best = { area: area, x: rect.x, y: rect.y, w: rect.width, h: rect.height };
+      }
+      return best;
+    }, { marker: CONFIG_MARKER, button: HIDE_CONFIG_LABEL[lang] });
+    if (!block) throw new Error('找不到「設定」區塊');
+    console.log('設定區塊 =', JSON.stringify(block));
+    box = { x: block.x, y: block.y, w: block.w, h: block.h };
+  }
 
   const shot = await page.send('Page.captureScreenshot', {
     format: 'png',
