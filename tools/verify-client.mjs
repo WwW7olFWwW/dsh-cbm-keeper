@@ -1782,8 +1782,14 @@ async function main() {
     noOverride.html.includes('>true<') && noOverride.html.includes('>1800<')
     && noOverride.html.includes('（空）') && noOverride.html.includes('ts, tsx, js'));
   checks.ok('設定：空陣列顯示「（空清單）」', noOverride.html.includes('（空清單）'));
-  checks.ok('設定：文案說清楚只恢復預設值、編輯在別處',
-    noOverride.html.includes('只會把你改過的欄位改回預設值') && noOverride.html.includes('DSH 的插件設定表單'));
+  // 文案必須同時交代兩件事：①恢復預設只動你改過的欄位；②要改值到底去哪裡。
+  // ②是後補的——原本只寫「請用 DSH 的插件設定表單」而沒說在哪，使用者實際問了
+  // 「那麼是要到哪里修改」，那句話等於沒說。所以這裡釘住具體路徑不能只是泛稱。
+  checks.ok('設定：文案說清楚只恢復預設值、且指出到哪裡改',
+    noOverride.html.includes('只會把你改過的欄位改回預設值')
+    && noOverride.html.includes('外掛') === false
+    && noOverride.html.includes('插件') && noOverride.html.includes('設定'),
+    noOverride.html.match(/列出可寫欄位[^<]*/)?.[0]?.slice(0, 120) ?? '(找不到 hint)');
   noOverride.unmount();
 
   // 兩個覆寫：只給覆寫的欄位按鈕；單欄重置後按鈕消失
