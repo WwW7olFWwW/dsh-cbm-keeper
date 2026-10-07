@@ -5,6 +5,49 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-07
+
+> 這一版把設定**真正做成可以改**。0.5.0／0.5.1 給的是一份「看得見預設值、能一鍵恢復」
+> 的清單——但它**只能看不能改**，而 0.5.1 的說明還把使用者指向一個**不存在的地方**。
+
+### Fixed
+
+- **0.5.1 的設定說明指向一個不存在的入口，已更正**。那句話說「要改值請到側邊欄『插件』→
+  本插件那一列的設定」——使用者實際去看了並回報「沒有設定這個選項」，他是對的。
+  查實的結果是：DSH **不會**依 schema 自動產生插件設定表單。`ui-plugin-manager` 的
+  `config-ledger.ts` 只把**已註冊 cell** 的 key 收進 `rows`，而 `plugins.row.config` 這個
+  slot 目前**沒有任何註冊者**（`occupants` 為空），所以 `configure.has(row)` 為 false，
+  那一列的標題只會渲染成純文字、進不去詳情頁。⇒ 插件要能被設定，必須**自己提供介面**。
+
+### Added
+
+- **設定可就地編輯**（設定 →「CBM 圖譜」→ 展開「設定」區塊）。18 個欄位依型別給對的控件：
+  布林是 checkbox、數字是 `type="number"`、`mode` 是下拉（**未知的現值會補進選項**，不會被
+  無聲改掉），其餘是文字輸入。
+- **暫存 ＋ 明確儲存**：編輯先留在本地並顯示「未儲存 N 項」徽章（欄位名也會標示），
+  按「**儲存變更**」才一次送出（只送真的改過的欄位），成功後重讀並以**伺服器回報的值**為準；
+  「**放棄變更**」還原成伺服器現值。**儲存失敗時暫存不會被清空**——否則使用者的輸入會無聲消失。
+- **超出範圍的值交由主機夾到合法範圍**，前端**刻意不重複一份界線**（界線已在
+  `resolveKeeperConfig` 的 clamp 裡，抄一份只會漂移）。送出後若值與送出值不同，會回報
+  「其中 N 項經主機調整」。前端只擋明顯無效的輸入（數字欄位留空或非數字 → 就地提示、不送出）。
+- a11y：每個輸入都有可關聯的 `label`、鍵盤可操作、無效輸入標 `aria-invalid`、
+  儲存中全部輸入 disabled 且按鈕帶 `aria-busy`。
+
+### 保留不變
+
+- 每一列的**單欄恢復預設**（只在被改過時出現）與頂端的**全部恢復預設**（兩段式確認、
+  沒有覆寫時停用）維持**立即生效**（不進暫存）；若該欄位同時有未儲存的編輯，該編輯會被丟棄
+  並在回饋中說明。恢復預設**只清掉你改過的欄位**，不是原廠重設。
+
+### 驗證
+
+- `tools/verify-client.mjs` **242 → 270**（新增涵蓋上面每一條邊界；驗證器的假 host 現在會
+  真的套用 patch／reset 並依 schema 夾值，所以那些是端到端斷言）。
+- 單元測試 214/214；`npm run test:syntax` 過。
+- 真機端到端（未切換語言）：18 個輸入齊全、改 `nice` 10→11、「未儲存 1 項」、儲存後顯示 11、
+  回饋「已儲存 1 項變更」、徽章「你改過 1 個欄位」、頁面零錯誤。**驗證後已把使用者的設定
+  還原**（獨立重讀：`overridden` 為空、各值等於預設）。
+
 ## [0.5.1] - 2026-10-07
 
 > 這一版只修一個可發現性缺陷：設定區塊的說明**只說「用 DSH 的插件設定表單」，
@@ -316,7 +359,8 @@
 - 單元測試 115 項，`node --test test/*.test.js` 全綠，不需要真的索引；CI 在 Node 20／22／24
   與「有／沒有 chokidar」六種組合上跑，且在沒有安裝 DSH 的機器上也能全綠（解析路徑用夾具驗證）。
 
-[Unreleased]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.6.0
 [0.5.1]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.5.1
 [0.5.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.5.0
 [0.4.0]: https://github.com/WwW7olFWwW/dsh-codebase-watcher/releases/tag/v0.4.0

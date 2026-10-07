@@ -115,9 +115,9 @@ The full comparison is in section 7 of [`docs/REQUIREMENTS.md`](docs/REQUIREMENT
 
 ## Configuration
 
-18 tunable fields and 7 REST routes: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md). Field changes take effect immediately, no restart, and defaults are one click away (only the fields you changed are cleared).
+18 tunable fields and 7 REST routes: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md). Edit the fields right on the card (Settings → "CBM 圖譜" → Show settings) and press Save changes; defaults are one click away (only the fields you changed are cleared).
 
-![The settings block expanded: all 18 writable fields with their current values, each marked "(default)" while unchanged; "Reset all to defaults" stays disabled when nothing is overridden](docs/assets/cbm-card-settings-en.png)
+![The settings block expanded: all 18 fields are editable controls (checkbox / number / select / text), each marked "(default)" while unchanged; "Save changes" and "Reset all to defaults" are both disabled when there is nothing to change](docs/assets/cbm-card-settings-en.png)
 
 State lives in `~/.dsh/codebase-watcher/state.json` and the log in `~/.dsh/codebase-watcher/keeper.log`. Read-only query: `curl -s http://127.0.0.1:3080/api/codebase-watcher/state`.
 

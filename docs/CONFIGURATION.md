@@ -2,7 +2,8 @@
 
 ## 設定欄位
 
-所有欄位都可以寫在 `cordis.patch.yml`，也可以在設定頁改；改完立刻生效，不用重啟。
+所有欄位都可以寫在 `cordis.patch.yml`，也可以**在設定頁的本插件卡片上直接改**：設定 →「CBM 圖譜」→
+按「顯示設定」展開「設定」區塊。改完立刻生效，不用重啟。
 改過的欄位可以還原：`POST /config` 的 `reset`（或卡片上的「恢復預設」）會把值退回預設。
 **它只清掉你改過的那些欄位**（就是 `GET /config` 回報的 `overridden`），沒改過的不動——不是原廠重設。
 
@@ -26,6 +27,21 @@
 | `includeProjects` | `''` | 只納管這些專案名。留空＝全部。 |
 | `excludeProjects` | `''` | 排除這些專案名。 |
 | `graphUrl` | `''` | CBM 圖譜 UI 的來源網址（只收 `http(s)://`）。留空＝由 CBM 的 `ui_port` 推導成 `http://127.0.0.1:<port>`；遠端或反向代理情境在此覆寫。 |
+
+### 在卡片上編輯
+
+展開「設定」區塊之後，18 個欄位就是輸入控制項：布林＝核取方塊、數字＝數字輸入、`mode`＝下拉、其餘＝文字。
+有幾點是刻意的：
+
+- **改了不會馬上送出。** 畫面出現「未儲存 N 項」徽章，按「**儲存變更**」才一次送出所有改動過的欄位；
+  按「**放棄變更**」則丟掉未儲存的編輯、還原成伺服器上的值。沒有未儲存的變更時，「儲存變更」是停用的。
+- **範圍檢查在主機，不在前端。** 前端只擋「數字欄位留空或不是數字」——會標紅、顯示「請填數字」，而且**不送出**。
+  超出範圍的值由**主機夾到合法範圍**；送出後前端會**重讀一次 `GET /config`**，畫面顯示的是主機回報的值。
+  如果和送出的不同，回饋會寫「已儲存 N 項變更，其中 M 項經主機調整」。前端刻意不重複一份界線，界線只有主機那一份。
+- **儲存失敗不會吃掉你的輸入。** 非 2xx 或連線問題時回饋「儲存失敗，未儲存的變更已保留」，編輯內容留在畫面上。
+- **兩顆恢復鈕立即生效，不進暫存。** 每一列的「恢復預設」只出現在被改過的欄位旁（同時顯示該欄位的「預設值 X」）；
+  頂端的「全部恢復預設」帶兩段式確認，沒有任何覆寫時是停用的。恢復時會一併丟棄該欄位未儲存的編輯。
+- **舊 host 不渲染這一塊**：回應沒有 `defaults`／`overridden` 時整個區塊不出現，不會畫一個按了會壞的編輯器。
 
 ### 什麼情況下該調 `dirtySettleSeconds`
 
@@ -101,10 +117,12 @@ CBM 自帶一個 HTTP 圖譜介面（`codebase-memory-mcp --ui=true`，預設埠
 | `POST` | `/api/codebase-watcher/rebuild` | `{"id":…}` / `{"staleOnly":true}` / `{"mode":"fast"}` / `{"force":true}`；不帶 `id` 且帶 `force:true`＝全部強制重建 |
 | `POST` | `/api/codebase-watcher/cancel` | 取消目前正在跑的重建（`{"cancelled":true/false}`） |
 | `POST` | `/api/codebase-watcher/watchers` | `{"action":"pause"\|"resume", "id"?:…}` |
-| `GET` | `/api/codebase-watcher/config` | 讀取目前設定（`config` 可寫、`runtime` 觀測、`upstream` 是 CBM 的設定、`defaults` 是預設值、`overridden` 是被改過的欄位） |
-| `POST` | `/api/codebase-watcher/config` | 寫入設定（上表的欄位名 → 新值；`null` 表示回退該欄位預設），或用 `reset` 恢復預設 |
+| `GET` | `/api/codebase-watcher/config` | 讀取目前設定（`config` 可寫、`runtime` 觀測、`upstream` 是 CBM 的設定、`defaults` 是預設值、`overridden` 是被改過的欄位——**`overridden` 只有這條 GET 會回**） |
+| `POST` | `/api/codebase-watcher/config` | 寫入設定（上表的欄位名 → 新值；`null` 表示回退該欄位預設），或用 `reset` 恢復預設。回應是 `{ok, config, unknown, reset, note}`——**不含 `overridden`** |
 
 `check`／`rebuild`／`watchers` 帶不存在的 `id` 會回 **404**；`id` 是專案的絕對路徑（`GET /state` 的 `projects[].key`），不是卡片上顯示的名字。
+
+寫入類路由還有一種失敗：這個部署**沒有掛載 settings 服務**時，`POST /config` 回 **503**（「設定為唯讀；請改 `cordis.patch.yml`」）——卡片上會顯示「儲存失敗，未儲存的變更已保留」。
 
 `rebuild` 預設**不帶 force**：圖譜 HEAD 與工作樹一致時回 `queued: 0`，不產生任何索引工作。要無條件重跑請帶 `force: true`。
 

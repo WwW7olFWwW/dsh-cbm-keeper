@@ -115,9 +115,9 @@ codebase-memory-mcp config set auto_index false
 
 ## 設定
 
-18 個可調欄位與 7 條 REST 路由：[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)。欄位改完立刻生效，不用重啟；改壞了可以一鍵恢復預設（只清掉你改過的那些）。
+18 個可調欄位與 7 條 REST 路由：[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)。欄位就在卡片上改（設定 →「CBM 圖譜」→「顯示設定」），按「儲存變更」立即生效；改壞了可以一鍵恢復預設（只清掉你改過的那些）。
 
-![設定區塊展開後：18 個可寫欄位與目前值，沒被改過的一律標「（預設）」；沒有任何覆寫時「全部恢復預設」是停用的](docs/assets/cbm-card-settings.png)
+![設定區塊展開後：18 個欄位都是可直接編輯的控件（核取方塊／數字／下拉／文字），沒被改過的一律標「（預設）」；沒有變更時「儲存變更」與「全部恢復預設」都是停用的](docs/assets/cbm-card-settings.png)
 
 狀態檔在 `~/.dsh/codebase-watcher/state.json`，日誌在 `~/.dsh/codebase-watcher/keeper.log`；唯讀查詢：`curl -s http://127.0.0.1:3080/api/codebase-watcher/state`。
 

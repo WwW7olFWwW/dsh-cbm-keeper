@@ -353,6 +353,21 @@ function createMiniReact() {
         return { ok: true };
       },
       /**
+       * 對節點送一個事件（給 input／select 的 onChange 用；onClick 走 click()）。
+       * @param {Function} predicate - 條件。
+       * @param {string} prop - 事件屬性名（例如 'onChange'）。
+       * @param {object} event - 事件物件。
+       * @returns {{ok: boolean, reason?: string}} 結果。
+       */
+      fire: function (predicate, prop, event) {
+        const node = findNode(predicate);
+        if (node === undefined) return { ok: false, reason: '找不到節點' };
+        if (node.props.disabled === true) return { ok: false, reason: '節點已停用' };
+        if (typeof node.props[prop] !== 'function') return { ok: false, reason: '節點沒有 ' + prop };
+        node.props[prop](event);
+        return { ok: true };
+      },
+      /**
        * 依條件取節點文字。
        * @param {Function} predicate - 條件。
        * @returns {string|undefined} 文字。
@@ -654,6 +669,8 @@ function createFetchRouter() {
     calls,
     /** `/config` 的夾具（含 defaults／overridden）。未設＝舊 host。 */
     configFixture: undefined,
+    /** 設 true 時 `/config` 的 POST 一律回 500（測「儲存失敗不得清暫存」）。 */
+    configFail: false,
     /** 清空呼叫記錄。 */
     reset: function () { calls.length = 0; },
     /** 放掉被 hold 住的那個 POST（換它 resolve）。 */
@@ -701,19 +718,35 @@ function createFetchRouter() {
         return router.fixture;
       }
       if (path.endsWith('/config')) {
-        // 真的把重置套用到夾具上：重置後的 GET 會反映新狀態（按鈕才會消失）。
+        if (router.configFail === true) return { __status: 500, error: 'verifier: 模擬儲存失敗' };
+        // 真的把 reset／patch 套用到夾具上：之後的 GET 會反映新狀態（按鈕才會消失）。
         const payload = router.configFixture ?? { config: {}, defaults: {}, overridden: [] };
-        const overridden = Array.isArray(payload.overridden) ? payload.overridden : [];
+        const before = Array.isArray(payload.overridden) ? payload.overridden : [];
         const requested = body !== undefined && body.reset === true
-          ? overridden.slice()
+          ? before.slice()
           : (body !== undefined && Array.isArray(body.reset) ? body.reset : []);
         for (const field of requested) {
           if (payload.defaults !== undefined && Object.prototype.hasOwnProperty.call(payload.defaults, field)) {
             payload.config[field] = payload.defaults[field];
           }
-          const at = overridden.indexOf(field);
-          if (at !== -1) overridden.splice(at, 1);
         }
+        for (const field of Object.keys(body ?? {})) {
+          if (field === 'reset') continue;
+          let value = body[field];
+          const range = CONFIG_CLAMP[field];
+          // 夾值：與 host 的 resolveKeeperConfig 同語意（前端刻意不做這件事）。
+          if (range !== undefined && typeof value === 'number') {
+            value = Math.min(range[1], Math.max(range[0], value));
+          }
+          payload.config[field] = value;
+        }
+        const overridden = Object.keys(payload.config)
+          .filter(function (field) {
+            return payload.defaults !== undefined
+              && JSON.stringify(payload.config[field]) !== JSON.stringify(payload.defaults[field]);
+          })
+          .sort();
+        payload.overridden = overridden;
         return { ok: true, config: payload.config, overridden, unknown: [] };
       }
       if (path.endsWith('/check')) return { ok: true, status: {}, projects: router.fixture?.projects ?? [] };
@@ -752,9 +785,10 @@ function createFetchRouter() {
       }
       const payload = router.respond(url.pathname, method, body);
       if (payload === undefined) return Promise.reject(new Error('verifier: 沒有 ' + url.pathname + ' 的夾具'));
+      const status = typeof payload.__status === 'number' ? payload.__status : 200;
       return Promise.resolve({
-        ok: true,
-        status: 200,
+        ok: status >= 200 && status < 300,
+        status,
         text: function () { return Promise.resolve(JSON.stringify(payload)); },
       });
     }
@@ -771,6 +805,17 @@ function createFetchRouter() {
   };
   return router;
 }
+
+/** 假 host 的夾值範圍（鏡射 `lib/config.js` 的 z.number().min().max()）。 */
+const CONFIG_CLAMP = {
+  dirtySettleSeconds: [0, 3600],
+  rebuildCooldownSeconds: [0, 3600],
+  scanMinutes: [0.5, 1440],
+  nice: [0, 19],
+  maxLogEntries: [50, 10000],
+  debounceMs: [200, 600000],
+  rebuildTimeoutSeconds: [30, 21600],
+};
 
 /**
  * 造一個專案（夾具用）。
@@ -887,6 +932,17 @@ function actionList(harness) {
 function indicatorCss(harness) {
   const node = harness.nodes.find(function (item) { return item.props['data-dsw-indicator'] !== undefined; });
   return node === undefined ? '' : styleToCss(node.props.style);
+}
+
+/**
+ * 找設定區塊的某個輸入（`data-dsw-config-input`）。
+ * @param {string} field - 欄位名。
+ * @returns {Function} 條件函式。
+ */
+function byInput(field) {
+  return function (node) {
+    return node.props['data-dsw-config-input'] === field;
+  };
 }
 
 /**
@@ -1721,19 +1777,20 @@ async function main() {
   enStats.unmount();
   router.mode = 'fixture';
 
-  // ------------------------------------------------ 設定區塊（預設值 ＋ 恢復預設）
+  // ------------------------------------------------ 設定區塊（就地編輯 ＋ 預設值 ＋ 恢復預設）
   const configFields = [
     'enabled', 'cliPath', 'mode', 'rebuildTimeoutSeconds', 'scanMinutes', 'watchEnabled',
     'debounceMs', 'rebuildCooldownSeconds', 'dirtySettleSeconds', 'autoRebuild', 'includeDirty',
     'nice', 'maxLogEntries', 'extensions', 'excludes', 'includeProjects', 'excludeProjects', 'graphUrl',
   ];
+  // 與真 host 同形狀：清單類欄位在 /config 裡是**字串**（POST 也收字串，host 再 splitList）。
   const configFixture = function (overridden) {
     const defaults = {
       enabled: true, cliPath: '', mode: 'full', rebuildTimeoutSeconds: 1800, scanMinutes: 5,
       watchEnabled: true, debounceMs: 3000, rebuildCooldownSeconds: 45, dirtySettleSeconds: 90,
       autoRebuild: true, includeDirty: true, nice: 10, maxLogEntries: 2000,
-      extensions: ['ts', 'tsx', 'js'], excludes: ['node_modules', '.git'],
-      includeProjects: [], excludeProjects: [], graphUrl: '',
+      extensions: 'ts, tsx, js', excludes: 'node_modules, .git',
+      includeProjects: '', excludeProjects: '', graphUrl: '',
     };
     const config = JSON.parse(JSON.stringify(defaults));
     for (const field of overridden) {
@@ -1743,12 +1800,41 @@ async function main() {
     }
     return { config, defaults, runtime: {}, upstream: {}, overridden: overridden.slice() };
   };
-  const configRowCount = function (harness) {
-    return harness.count(function (node) { return node.props['data-dsw-config-field'] !== undefined; });
+  const inputNode = function (harness, field) {
+    return harness.nodes.filter(function (node) { return node.props['data-dsw-config-input'] === field; })[0];
+  };
+  const inputValue = function (harness, field) {
+    const node = inputNode(harness, field);
+    if (node === undefined) return undefined;
+    return node.props.type === 'checkbox' ? node.props.checked : node.props.value;
+  };
+  const openConfig = async function (harness) {
+    harness.click(byAction('panel:config'));
+    await harness.settle();
+  };
+  const editField = async function (harness, field, value) {
+    const node = inputNode(harness, field);
+    const result = node.props.type === 'checkbox'
+      ? harness.fire(byInput(field), 'onChange', { target: { checked: value } })
+      : harness.fire(byInput(field), 'onChange', { target: { value: String(value) } });
+    await harness.settle();
+    return result;
+  };
+  /** 「未儲存 N 項」徽章的數量（用文字開頭比對，避開回饋訊息裡的『未儲存』字樣）。 */
+  const unsavedBadges = function (harness) {
+    return harness.count(function (node) {
+      return node.tag === 'span' && nodeText(node).indexOf('未儲存 ') === 0;
+    });
+  };
+  const saveDisabled = function (harness) {
+    return harness.nodes.filter(function (node) {
+      return node.props['data-dsw-action'] === 'config:save';
+    })[0]?.props?.disabled === true;
   };
 
   router.mode = 'fixture';
   router.fixture = makeFixture({});
+  router.configFail = false;
 
   // 舊 host：整個區塊不渲染
   router.configFixture = undefined;
@@ -1759,111 +1845,198 @@ async function main() {
   checks.ok('設定：舊 host 不留「恢復預設」的痕跡', !legacyHost.html.includes('全部恢復預設'));
   legacyHost.unmount();
 
-  // 沒有任何覆寫：全部標（預設）、全部恢復鈕 disabled
+  // 無覆寫：型別正確、無死按鈕、儲存鈕 disabled
   router.configFixture = configFixture([]);
   const noOverride = mini.mount(registration.Component, {});
   await noOverride.settle();
   checks.ok('設定：無覆寫時區塊在、但預設收起', noOverride.html.includes('data-dsw-config')
-    && noOverride.html.includes('顯示設定') && configRowCount(noOverride) === 0);
-  noOverride.click(byAction('panel:config'));
-  await noOverride.settle();
+    && noOverride.html.includes('顯示設定') && inputNode(noOverride, 'enabled') === undefined);
+  await openConfig(noOverride);
   checks.ok('設定：展開後列出所有可寫欄位（' + String(configFields.length) + ' 個）',
-    configRowCount(noOverride) === configFields.length, String(configRowCount(noOverride)));
-  checks.ok('設定：無覆寫時全部標「（預設）」', (noOverride.html.match(/（預設）/g) ?? []).length === configFields.length,
-    String((noOverride.html.match(/（預設）/g) ?? []).length));
-  checks.ok('設定：無覆寫時沒有任何單欄恢復鈕',
-    noOverride.count(function (node) {
-      return String(node.props['data-dsw-action'] ?? '').indexOf('config:reset:') === 0;
-    }) === 0);
+    noOverride.count(function (node) { return node.props['data-dsw-config-field'] !== undefined; }) === configFields.length);
+  checks.ok('設定：布林欄位是 checkbox',
+    ['enabled', 'watchEnabled', 'autoRebuild', 'includeDirty'].every(function (field) {
+      return inputNode(noOverride, field)?.props?.type === 'checkbox';
+    }));
+  checks.ok('設定：數字欄位是 type=number',
+    ['rebuildTimeoutSeconds', 'scanMinutes', 'debounceMs', 'rebuildCooldownSeconds', 'dirtySettleSeconds', 'nice', 'maxLogEntries']
+      .every(function (field) { return inputNode(noOverride, field)?.props?.type === 'number'; }));
+  checks.ok('設定：字串欄位是文字輸入且值正確',
+    inputNode(noOverride, 'cliPath')?.props?.type === 'text'
+    && inputNode(noOverride, 'extensions')?.props?.value === 'ts, tsx, js'
+    && inputNode(noOverride, 'excludeProjects')?.props?.value === '');
+  checks.ok('設定：mode 是下拉且三個選項齊全',
+    inputNode(noOverride, 'mode')?.tag === 'select'
+    && noOverride.count(function (node) { return node.tag === 'option'; }) === 3);
+  checks.ok('設定：無覆寫時全部標「（預設）」',
+    (noOverride.html.match(/（預設）/g) ?? []).length === configFields.length);
   checks.ok('設定：無覆寫時「全部恢復預設」disabled', noOverride.nodes.filter(function (node) {
     return node.props['data-dsw-action'] === 'config:resetAll';
   })[0]?.props?.disabled === true);
-  checks.ok('設定：型別顯示可讀（布林／數字／空字串／陣列）',
-    noOverride.html.includes('>true<') && noOverride.html.includes('>1800<')
-    && noOverride.html.includes('（空）') && noOverride.html.includes('ts, tsx, js'));
-  checks.ok('設定：空陣列顯示「（空清單）」', noOverride.html.includes('（空清單）'));
-  // 文案必須同時交代兩件事：①恢復預設只動你改過的欄位；②要改值到底去哪裡。
-  // ②是後補的——原本只寫「請用 DSH 的插件設定表單」而沒說在哪，使用者實際問了
-  // 「那麼是要到哪里修改」，那句話等於沒說。所以這裡釘住具體路徑不能只是泛稱。
-  checks.ok('設定：文案說清楚只恢復預設值、且指出到哪裡改',
-    noOverride.html.includes('只會把你改過的欄位改回預設值')
-    && noOverride.html.includes('外掛') === false
-    && noOverride.html.includes('插件') && noOverride.html.includes('設定'),
-    noOverride.html.match(/列出可寫欄位[^<]*/)?.[0]?.slice(0, 120) ?? '(找不到 hint)');
+  checks.ok('設定：每個輸入都有可關聯的 label', configFields.every(function (field) {
+    const node = inputNode(noOverride, field);
+    if (node === undefined || typeof node.props.id !== 'string') return false;
+    return noOverride.nodes.some(function (candidate) {
+      return candidate.tag === 'label' && candidate.props.htmlFor === node.props.id;
+    });
+  }));
+  checks.ok('設定：文案說「這裡可以直接改值」並說明夾值',
+    noOverride.html.includes('這裡可以直接改值') && noOverride.html.includes('夾到合法範圍'));
+  checks.ok('設定：不再指向那個不存在的插件設定表單', !noOverride.html.includes('那一列的設定'));
+  checks.ok('設定：無變更時「儲存變更」disabled', saveDisabled(noOverride) === true);
+  checks.ok('設定：無變更時不顯示「未儲存」徽章', unsavedBadges(noOverride) === 0);
   noOverride.unmount();
 
-  // 兩個覆寫：只給覆寫的欄位按鈕；單欄重置後按鈕消失
-  router.configFixture = configFixture(['rebuildCooldownSeconds', 'dirtySettleSeconds']);
+  // 編輯 → 未儲存 → 儲存（含 host 夾值）
+  router.configFixture = configFixture([]);
   router.reset();
-  const withOverride = mini.mount(registration.Component, {});
-  await withOverride.settle();
-  checks.ok('設定：有覆寫時頂端標出數量', withOverride.html.includes('你改過 2 個欄位'));
-  withOverride.click(byAction('panel:config'));
-  await withOverride.settle();
+  const withEdit = mini.mount(registration.Component, {});
+  await withEdit.settle();
+  await openConfig(withEdit);
+  await editField(withEdit, 'dirtySettleSeconds', '30');
+  checks.ok('設定：編輯後顯示「未儲存 1 項」', withEdit.html.includes('未儲存 1 項'));
+  checks.ok('設定：有變更時「儲存變更」可用', saveDisabled(withEdit) !== true);
+  checks.ok('設定：有變更時出現「放棄變更」',
+    withEdit.nodes.some(function (node) { return node.props['data-dsw-action'] === 'config:discard'; }));
+  checks.ok('設定：編輯中的欄位名會變色標示（不是只有徽章）',
+    withEdit.nodes.some(function (node) {
+      return node.props['data-dsw-config-field'] === 'dirtySettleSeconds'
+        && String(node.props.children?.[0]?.props?.style?.color ?? '').includes('brand');
+    }));
+  await editField(withEdit, 'enabled', false);
+  checks.ok('設定：第二個欄位也進暫存（未儲存 2 項）', withEdit.html.includes('未儲存 2 項'));
+  checks.ok('設定：勾選框的暫存值顯示為 false', inputValue(withEdit, 'enabled') === false);
+
+  const clickSave = withEdit.click(byAction('config:save'));
+  checks.ok('設定：點得到「儲存變更」', clickSave.ok === true, clickSave.reason);
+  await withEdit.settle();
+  const editPosts = router.postCalls('/config');
+  checks.ok('設定：儲存一次 POST 只送改動的欄位、型別正確',
+    editPosts.length === 1
+    && JSON.stringify(editPosts[0]?.body) === JSON.stringify({ dirtySettleSeconds: 30, enabled: false }),
+    JSON.stringify(editPosts[0]?.body));
+  checks.ok('設定：儲存成功後暫存清空（徽章消失）', unsavedBadges(withEdit) === 0);
+  checks.ok('設定：儲存成功後輸入顯示重讀回來的值',
+    inputValue(withEdit, 'dirtySettleSeconds') === '30' && inputValue(withEdit, 'enabled') === false);
+  checks.ok('設定：儲存成功後徽章改顯示「你改過 2 個欄位」', withEdit.html.includes('你改過 2 個欄位'));
+  checks.ok('設定：儲存回饋從回應推導', withEdit.html.includes('已儲存 2 項變更'),
+    withEdit.text(function (node) { return node.props?.role === 'status'; }));
+
+  // 夾值：送 99999，host 夾成 3600，畫面以重讀回來的值為準
+  await editField(withEdit, 'dirtySettleSeconds', '99999');
+  withEdit.click(byAction('config:save'));
+  await withEdit.settle();
+  checks.ok('設定：夾值後的輸入顯示 host 回報的值（3600）', inputValue(withEdit, 'dirtySettleSeconds') === '3600',
+    String(inputValue(withEdit, 'dirtySettleSeconds')));
+  checks.ok('設定：夾值會明講（1 項經主機調整）', withEdit.html.includes('其中 1 項經主機調整'));
+
+  // 儲存失敗：暫存不得清空
+  router.configFail = true;
+  const postsBeforeFail = router.postCalls('/config').length;
+  await editField(withEdit, 'nice', '7');
+  checks.ok('設定：失敗前暫存有 1 項', withEdit.html.includes('未儲存 1 項'));
+  withEdit.click(byAction('config:save'));
+  await withEdit.settle();
+  checks.ok('設定：儲存失敗會回 500（沒有真的送出成功）',
+    router.postCalls('/config').length === postsBeforeFail + 1);
+  checks.ok('設定：儲存失敗時回饋區說「已保留」', withEdit.html.includes('儲存失敗，未儲存的變更已保留'));
+  checks.ok('設定：儲存失敗後暫存仍在（不得清空）', unsavedBadges(withEdit) === 1);
+  checks.ok('設定：儲存失敗後輸入仍是使用者的值', inputValue(withEdit, 'nice') === '7');
+  router.configFail = false;
+
+  // 放棄變更
+  withEdit.click(byAction('config:discard'));
+  await withEdit.settle();
+  checks.ok('設定：放棄變更後輸入還原成伺服器值', inputValue(withEdit, 'nice') === '10');
+  checks.ok('設定：放棄變更後徽章歸零', unsavedBadges(withEdit) === 0);
+  checks.ok('設定：放棄變更會回報放棄幾項', withEdit.html.includes('已放棄 1 項未儲存的變更'));
+
+  // 明顯無效的輸入：就地提示、不送出
+  await editField(withEdit, 'nice', '');
+  checks.ok('設定：數字欄位留空就地提示', withEdit.html.includes('請填數字'));
+  checks.ok('設定：無效輸入標 aria-invalid', inputNode(withEdit, 'nice')?.props?.['aria-invalid'] === true);
+  const postsBeforeInvalid = router.postCalls('/config').length;
+  withEdit.click(byAction('config:save'));
+  await withEdit.settle();
+  checks.ok('設定：無效輸入不送出', router.postCalls('/config').length === postsBeforeInvalid);
+  checks.ok('設定：無效輸入的回饋說明沒有送出', withEdit.html.includes('有 1 個欄位格式不對，沒有送出'));
+  checks.ok('設定：無效輸入不會清掉暫存', withEdit.html.includes('未儲存 1 項'));
+  await editField(withEdit, 'nice', '10');
+  checks.ok('設定：修好之後暫存歸零（值與伺服器相同）', unsavedBadges(withEdit) === 0);
+  withEdit.unmount();
+
+  // 恢復預設：立即生效，且會丟棄該欄位未儲存的編輯
+  router.configFixture = configFixture(['dirtySettleSeconds', 'rebuildCooldownSeconds']);
+  router.reset();
+  const withReset = mini.mount(registration.Component, {});
+  await withReset.settle();
+  await openConfig(withReset);
   checks.ok('設定：只有被覆寫的欄位才有恢復鈕',
-    withOverride.count(byAction('config:reset:rebuildCooldownSeconds')) === 1
-    && withOverride.count(byAction('config:reset:dirtySettleSeconds')) === 1
-    && withOverride.count(byAction('config:reset:enabled')) === 0);
-  checks.ok('設定：覆寫欄位看得出來（目前值旁標出預設值）',
-    withOverride.html.includes('預設值 45') && withOverride.html.includes('預設值 90'));
-  checks.ok('設定：有覆寫時「全部恢復預設」可按', withOverride.nodes.filter(function (node) {
-    return node.props['data-dsw-action'] === 'config:resetAll';
-  })[0]?.props?.disabled !== true);
+    withReset.count(byAction('config:reset:dirtySettleSeconds')) === 1
+    && withReset.count(byAction('config:reset:enabled')) === 0);
+  await editField(withReset, 'dirtySettleSeconds', '30');
+  withReset.click(byAction('config:reset:dirtySettleSeconds'));
+  await withReset.settle();
+  const resetPost = router.postCalls('/config')[0];
+  checks.ok('設定：單欄重置送出 {reset:[欄位]}',
+    JSON.stringify(resetPost?.body) === JSON.stringify({ reset: ['dirtySettleSeconds'] }),
+    JSON.stringify(resetPost?.body));
+  checks.ok('設定：單欄重置後輸入同步成預設值', inputValue(withReset, 'dirtySettleSeconds') === '90',
+    String(inputValue(withReset, 'dirtySettleSeconds')));
+  checks.ok('設定：單欄重置會說明丟棄了未儲存的編輯',
+    withReset.html.includes('已恢復 dirtySettleSeconds 的預設值') && withReset.html.includes('未儲存的編輯已丟棄'));
+  checks.ok('設定：單欄重置後該欄位的恢復鈕消失',
+    withReset.count(byAction('config:reset:dirtySettleSeconds')) === 0);
 
-  const clickOne = withOverride.click(byAction('config:reset:rebuildCooldownSeconds'));
-  checks.ok('設定：點得到單欄「恢復預設」', clickOne.ok === true, clickOne.reason);
-  await withOverride.settle();
-  const onePost = router.postCalls('/config');
-  checks.ok('設定：單欄重置送出 {reset:[欄位]}', onePost.length === 1
-    && JSON.stringify(onePost[0]?.body) === JSON.stringify({ reset: ['rebuildCooldownSeconds'] }),
-    JSON.stringify(onePost[0]?.body));
-  checks.ok('設定：單欄重置後該欄位的按鈕消失',
-    withOverride.count(byAction('config:reset:rebuildCooldownSeconds')) === 0
-    && withOverride.count(byAction('config:reset:dirtySettleSeconds')) === 1);
-  checks.ok('設定：單欄重置的回饋從回應推導',
-    withOverride.html.includes('已恢復 rebuildCooldownSeconds 的預設值'),
-    withOverride.text(function (node) { return node.props?.role === 'status'; }));
-  checks.ok('設定：重置走既有的 role="status" 回饋區',
-    withOverride.html.includes('role="status"'));
-
-  // 全部重置：兩段式確認 → {reset:true} → 按鈕全消失
-  const clickResetAll = withOverride.click(byAction('config:resetAll'));
+  // 全部重置（既有行為不變）
+  const clickResetAll = withReset.click(byAction('config:resetAll'));
   checks.ok('設定：點得到「全部恢復預設」', clickResetAll.ok === true, clickResetAll.reason);
-  await withOverride.settle();
-  checks.ok('設定：全部重置先問一次（不是 window.confirm）',
-    withOverride.html.includes('確定要把所有改過的欄位恢復成預設值？'));
-  checks.ok('設定：上膛時還沒送 POST', router.postCalls('/config').length === 1,
-    String(router.postCalls('/config').length));
-  const confirmAll = withOverride.click(byAction('config:resetAll:confirm'));
-  checks.ok('設定：點得到確認', confirmAll.ok === true, confirmAll.reason);
-  await withOverride.settle();
-  const allPost = router.postCalls('/config');
+  await withReset.settle();
+  checks.ok('設定：全部重置先問一次', withReset.html.includes('確定要把所有改過的欄位恢復成預設值？'));
+  withReset.click(byAction('config:resetAll:confirm'));
+  await withReset.settle();
+  const allResetPost = router.postCalls('/config')[1];
   checks.ok('設定：全部重置送出 {reset:true}',
-    allPost.length === 2 && JSON.stringify(allPost[1]?.body) === JSON.stringify({ reset: true }),
-    JSON.stringify(allPost[1]?.body));
+    JSON.stringify(allResetPost?.body) === JSON.stringify({ reset: true }), JSON.stringify(allResetPost?.body));
   checks.ok('設定：全部重置後所有恢復鈕消失',
-    withOverride.count(function (node) {
+    withReset.count(function (node) {
       return String(node.props['data-dsw-action'] ?? '').indexOf('config:reset:') === 0;
     }) === 0);
-  checks.ok('設定：全部重置的數量從回應推導（剩 1 個覆寫）',
-    withOverride.html.includes('已恢復 1 個欄位的預設值'));
-  checks.ok('設定：全部重置後「全部恢復預設」回到 disabled', withOverride.nodes.filter(function (node) {
-    return node.props['data-dsw-action'] === 'config:resetAll';
-  })[0]?.props?.disabled === true);
-  withOverride.unmount();
+  withReset.unmount();
+
+  // 儲存中：輸入與按鈕都要鎖住且有 aria-busy
+  router.configFixture = configFixture([]);
+  router.reset();
+  router.hold = true;
+  const busySave = mini.mount(registration.Component, {});
+  await busySave.settle();
+  await openConfig(busySave);
+  await editField(busySave, 'scanMinutes', '9');
+  busySave.click(byAction('config:save'));
+  await busySave.settle();
+  checks.ok('設定：儲存中輸入全部 disabled',
+    configFields.every(function (field) { return inputNode(busySave, field)?.props?.disabled === true; }));
+  checks.ok('設定：儲存中按鈕帶 aria-busy', busySave.nodes.filter(function (node) {
+    return node.props['data-dsw-action'] === 'config:save';
+  })[0]?.props?.['aria-busy'] === true);
+  router.hold = false;
+  router.release();
+  await busySave.settle();
+  busySave.unmount();
 
   // 英文
   router.configFixture = configFixture(['dirtySettleSeconds']);
   const enConfig = mini.mount(enRegistration.Component, {});
   await enConfig.settle();
-  enConfig.click(byAction('panel:config'));
-  await enConfig.settle();
+  await openConfig(enConfig);
   const enConfigBody = enConfig.html.replace(/<[^>]*>/g, ' ');
   checks.ok('設定：英文介面零 CJK', !cjk.test(enConfigBody),
     (enConfigBody.match(new RegExp(cjk.source, 'g')) ?? []).slice(0, 8).join(''));
   checks.ok('設定：英文文案齊備', enConfig.html.includes('1 fields changed')
-    && enConfig.html.includes('Reset all to defaults') && enConfig.html.includes('(default)')
-    && enConfig.html.includes('(empty)') && enConfig.html.includes('(empty list)'));
+    && enConfig.html.includes('Save changes') && enConfig.html.includes('(default)')
+    && enConfig.html.includes('Edit values here'));
+  await editField(enConfig, 'nice', '3');
+  checks.ok('設定：英文的未儲存徽章', enConfig.html.includes('1 unsaved'));
   enConfig.unmount();
   router.mode = 'fixture';
 
